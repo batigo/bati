@@ -1,0 +1,12 @@
+
+server:
+    addr: 0.0.0.0:9873
+
+log:
+    level: debug
+    file: bati/conf/bati.log
+    roll_size: 50kb
+
+channel_registry:
+    file: "bati/conf/channels.json"
+

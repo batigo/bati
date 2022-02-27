@@ -1,0 +1,10 @@
+[
+    {
+        "name": "chat",
+        "enable_close_notify": true,
+        "enable_multi_rooms": true,
+        "kafka": {
+            "host_ports": "172.20.82.5:9092"
+        }
+    }
+]
