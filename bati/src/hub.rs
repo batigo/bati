@@ -19,7 +19,7 @@ pub struct Hub {
     session_rooms: HashMap<String, HashSet<String>>,
     channels: HashMap<String, HashMap<String, Rc<Session>>>,
     session_channels: HashMap<String, HashSet<String>>,
-    uid_sessions: HashMap<u64, HashSet<String>>,
+    uid_sessions: HashMap<String, HashSet<String>>,
     dt_sessions: HashMap<DeviceType, u64>,
     rand: rand::rngs::ThreadRng,
     pilot: PilotSender,
@@ -32,7 +32,7 @@ pub struct Hub {
 
 #[derive(Clone)]
 struct Session {
-    uid: u64,
+    uid: String,
     encoder: Encoder,
     addr: SessionSender,
 }
@@ -177,8 +177,8 @@ impl Hub {
         self.sessions.get(sid).cloned()
     }
 
-    fn get_uid_sids_clone(&self, uid: u64) -> Option<HashSet<String>> {
-        self.uid_sessions.get(&uid).cloned()
+    fn get_uid_sids_clone(&self, uid: &str) -> Option<HashSet<String>> {
+        self.uid_sessions.get(uid).cloned()
     }
 
     fn get_room(&self, room: &str) -> Option<&HashMap<String, Rc<Session>>> {
@@ -237,18 +237,18 @@ impl Hub {
         }
     }
 
-    fn add_uid(&mut self, uid: u64, sid: &str) {
+    fn add_uid(&mut self, uid: &str, sid: &str) {
         self.uid_sessions
-            .entry(uid)
+            .entry(uid.to_string())
             .or_insert_with(HashSet::new)
             .insert(sid.to_string());
     }
 
-    fn remove_uid(&mut self, uid: u64, sid: &str) -> bool {
-        match self.uid_sessions.get_mut(&uid) {
+    fn remove_uid(&mut self, uid: &str, sid: &str) -> bool {
+        match self.uid_sessions.get_mut(uid) {
             Some(sessions) => {
                 if sessions.len() <= 1 {
-                    self.uid_sessions.remove(&uid);
+                    self.uid_sessions.remove(uid);
                 } else {
                     sessions.remove(sid);
                 }
@@ -367,7 +367,7 @@ impl Hub {
     async fn handle_session_register_msg(&mut self, msg: SessionRegMsg) {
         debug!("new session registered in hub-{}: {}", self.ix, &msg.sid);
         self.incr_dt_count(msg.dt);
-        self.add_uid(msg.uid, &msg.sid);
+        self.add_uid(&msg.uid, &msg.sid);
 
         let session = Rc::new(Session {
             uid: msg.uid,
@@ -392,7 +392,7 @@ impl Hub {
         }
 
         self.decr_dt_count(msg.dt);
-        self.remove_uid(msg.uid, &msg.sid);
+        self.remove_uid(&msg.uid, &msg.sid);
 
         let session = session.unwrap();
         debug!("session unreg data: {} - {}", msg.sid, session);
@@ -421,7 +421,7 @@ impl Hub {
                 let mut channel_msg = lib::ChannelMsg::new();
                 channel_msg.sid = Some(msg.sid.clone());
                 channel_msg.typ = lib::CHAN_MSG_TYPE_CLIENT_QUIT;
-                channel_msg.uid = Some(msg.uid);
+                channel_msg.uid = Some(msg.uid.clone());
                 channel_msg.sid = Some(msg.sid.clone());
                 channel_msg.ip = msg.ip.clone();
                 debug!(
@@ -521,7 +521,7 @@ impl Hub {
         let ratio = msg.ratio.take();
 
         for (sid, session) in sessions.unwrap().iter() {
-            if self.filter_session(session.uid, &whites, &blacks, &ratio) {
+            if self.filter_session(&session.uid, &whites, &blacks, &ratio) {
                 match msg.data.get_data_with_encoder(&session.encoder) {
                     Err(e) => {
                         error!(
@@ -559,7 +559,7 @@ impl Hub {
         let blacks = msg.blacks.take();
         let ratio = msg.ratio.take();
         for (sid, session) in self.sessions.iter() {
-            if self.filter_session(session.uid, &whites, &blacks, &ratio) {
+            if self.filter_session(&session.uid, &whites, &blacks, &ratio) {
                 continue;
             }
             match msg.data.get_data_with_encoder(&session.encoder) {
@@ -606,28 +606,30 @@ impl Hub {
             return self.proc_session_leave_room(sid, msg.channel, msg.room);
         }
 
-        if let Some(sids) = self.get_uid_sids_clone(msg.uid.unwrap()) {
-            sids.iter().for_each(|sid| {
-                self.proc_session_leave_room(sid, msg.channel.clone(), msg.room.clone());
-            });
+        if msg.uid.is_some() {
+            if let Some(sids) = self.get_uid_sids_clone(msg.uid.as_ref().unwrap()) {
+                sids.iter().for_each(|sid| {
+                    self.proc_session_leave_room(sid, msg.channel.clone(), msg.room.clone());
+                });
+            }
         }
     }
 
     fn filter_session(
         &self,
-        uid: u64,
-        whites: &Option<Vec<u64>>,
-        blacks: &Option<Vec<u64>>,
+        uid: &String,
+        whites: &Option<Vec<String>>,
+        blacks: &Option<Vec<String>>,
         ratio: &Option<u8>,
     ) -> bool {
         if let Some(v) = whites {
-            if v.contains(&uid) {
+            if v.contains(uid) {
                 return true;
             }
         }
 
         if let Some(v) = blacks {
-            if v.contains(&uid) {
+            if v.contains(uid) {
                 return false;
             }
         }

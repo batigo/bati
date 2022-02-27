@@ -65,8 +65,8 @@ pub struct HubChannelBizMsg {
     pub room: Option<String>,
     pub mids: Option<Vec<u64>>,
     pub ratio: Option<u8>,
-    pub whites: Option<Vec<u64>>,
-    pub blacks: Option<Vec<u64>>,
+    pub whites: Option<Vec<String>>,
+    pub blacks: Option<Vec<String>>,
     pub data: ChannelBizData,
 }
 
@@ -163,7 +163,7 @@ impl fmt::Display for HubJoinChannelMsg {
 
 #[derive(Clone, Debug)]
 pub struct HubLeaveRoomMsg {
-    pub uid: Option<u64>,
+    pub uid: Option<String>,
     pub sid: Option<String>,
     pub channel: String,
     pub room: String,
@@ -204,7 +204,7 @@ pub struct SessionRegMsg {
     pub sid: String,
     pub did: String,
     pub ip: Option<String>,
-    pub uid: u64,
+    pub uid: String,
     pub encoder: Encoder,
     pub dt: DeviceType,
     pub addr: SessionSender,
@@ -220,7 +220,7 @@ impl fmt::Display for SessionRegMsg {
 pub struct SessionUnregMsg {
     pub sid: String,
     pub did: String,
-    pub uid: u64,
+    pub uid: String,
     pub dt: DeviceType,
     pub ip: Option<String>,
 }

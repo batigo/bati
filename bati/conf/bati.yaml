@@ -5,7 +5,7 @@ server:
 log:
     level: debug
     file: bati/conf/bati.log
-    roll_size: 50kb
+    roll_size: 50mb
 
 channel_registry:
     file: "bati/conf/channels.json"

@@ -26,7 +26,7 @@ pub struct ChannelMsg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub uid: Option<u64>,
+    pub uid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -38,9 +38,9 @@ pub struct ChannelMsg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub broadcast_rate: Option<i8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exclude_mids: Option<Vec<u64>>,
+    pub exclude_mids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_mids: Option<Vec<u64>>,
+    pub include_mids: Option<Vec<String>>,
     pub ts: u64,
 }
 

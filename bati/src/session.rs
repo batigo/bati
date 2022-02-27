@@ -19,7 +19,7 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(180);
 
 pub struct Session {
     id: String,
-    mid: u64,
+    uid: String,
     did: String,
     ip: String,
     dt: DeviceType,
@@ -35,7 +35,7 @@ pub struct Session {
 
 impl Session {
     pub fn new(
-        mid: u64,
+        uid: String,
         did: String,
         ip: String,
         dt: u8,
@@ -43,11 +43,12 @@ impl Session {
         pilot: PilotSender,
         worker_index: usize,
     ) -> Session {
-        let id = gen_session_id(&did, mid, worker_index);
+        let id = gen_session_id(&did, &uid, worker_index);
         let (msg_sender, msg_receiver) = new_session_channel(&id, 32);
 
         Session {
-            mid,
+            id,
+            uid,
             ip,
             hub,
             pilot,
@@ -55,7 +56,6 @@ impl Session {
             msg_sender,
             did: did.clone(),
             dt: trans_dt(dt),
-            id: gen_session_id(&did, mid, worker_index),
             encoder: None,
             hb: Instant::now(),
             join_hub: false,
@@ -306,7 +306,7 @@ impl Session {
         channel_msg.data = msg.data.take();
         channel_msg.sid = Some(self.id.clone());
         channel_msg.ip = Some(self.ip.clone());
-        channel_msg.uid = Some(self.mid);
+        channel_msg.uid = Some(self.uid.clone());
         match serde_json::to_vec(&channel_msg) {
             Ok(bs) => {
                 self.pilot
@@ -347,13 +347,13 @@ impl Session {
     async fn quit(&mut self) {
         info!(
             "session stopping, sid: {}, mid: {}, did: {}, dt: {}, ip: {}",
-            self.id, self.mid, self.did, self.dt, self.ip
+            self.id, self.uid, self.did, self.dt, self.ip
         );
         if self.join_hub {
             self.hub
                 .send_session_msg(Session2HubMsg::Unregister(SessionUnregMsg {
                     sid: self.id.clone(),
-                    uid: self.mid,
+                    uid: self.uid.clone(),
                     did: self.did.clone(),
                     dt: self.dt,
                     ip: Some(self.ip.clone()),
@@ -410,7 +410,7 @@ impl Session {
     async fn join_hub(&mut self) {
         let msg = Session2HubMsg::Register(SessionRegMsg {
             sid: self.id.clone(),
-            uid: self.mid,
+            uid: self.uid.clone(),
             did: self.did.clone(),
             dt: self.dt,
             encoder: self.encoder.clone().unwrap(),
@@ -434,7 +434,7 @@ impl fmt::Display for Session {
         write!(
             f,
             "session - id:{}, uid:{}, did:{}, ip:{}, encoder: {:?}",
-            self.id, self.mid, self.did, self.ip, self.encoder,
+            self.id, self.uid, self.did, self.ip, self.encoder,
         )
     }
 }

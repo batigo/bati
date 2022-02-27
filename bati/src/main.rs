@@ -113,7 +113,7 @@ async fn main() {
 #[serde(default)]
 struct Param {
     token: String,
-    mid: u64,
+    uid: String,
     did: String,
     dt: u8,
 }
@@ -121,7 +121,7 @@ struct Param {
 #[derive(Clone)]
 struct SessionLite {
     ix: usize,
-    mid: u64,
+    uid: String,
     did: String,
     ip: String,
     dt: u8,
@@ -141,7 +141,7 @@ async fn ws_handler(
 
     let ss = SessionLite {
         ip,
-        mid: param.mid,
+        uid: param.uid.clone(),
         did: param.did.clone(),
         dt: param.dt,
         hub: hub.get_ref().clone(),
@@ -162,13 +162,12 @@ async fn ws_service(
     (sink, ss): (ws::WsSink, SessionLite),
 ) -> Result<impl Service<ws::Frame, Response = Option<ws::Message>, Error = io::Error>, web::Error>
 {
-    let session = session::Session::new(ss.mid, ss.did, ss.ip, ss.dt, ss.hub, ss.pilot, ss.ix);
+    let session = session::Session::new(ss.uid, ss.did, ss.ip, ss.dt, ss.hub, ss.pilot, ss.ix);
     let session_sender = session.start(sink.clone());
 
     // handler service for incoming websockets frames
     let session_sender2 = session_sender.clone();
     Ok(fn_service(move |frame| {
-        println!("WEBSOCKET MESSAGE: {:?}", frame);
         let sender = session_sender2.clone();
         rt::spawn(async move {
             sender
