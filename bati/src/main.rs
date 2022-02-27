@@ -173,7 +173,7 @@ async fn ws_service(
             sender
                 .send_master_msg(session_proto::Master2SessionMsg::Frame(frame))
                 .await
-                .unwrap_or_else(|e| error!("failed to send msg to {} ", e.to_string()));
+                .unwrap_or_else(|e| error!("failed to send msg to session: {} - {} ", sender.id,  e.to_string()));
         });
 
         ready(Ok(None))
@@ -183,8 +183,7 @@ async fn ws_service(
             // let mut session_sender = session_sender.clone();
             session_sender
                 .send_master_msg(session_proto::Master2SessionMsg::Shutdown)
-                .await
-                .unwrap_or_else(|e| error!("failed to send msg to {} ", e.to_string()));
+                .await.unwrap_or(());
         });
     }))
 }

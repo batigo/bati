@@ -212,7 +212,6 @@ impl fmt::Display for ClientMsg {
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct SessionInitMsgData {
-    pub sessionid: Option<String>,
     pub session_id: Option<String>,
     pub content_encoding: String,
     pub accept_encoding: String,

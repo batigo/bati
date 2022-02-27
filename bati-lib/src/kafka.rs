@@ -144,7 +144,7 @@ async fn run_consumer(
                         channel: Some(channel.clone()),
                     };
                     sender.send(msg).await.unwrap_or_else(|e| {
-                        error!("failed to send msg to send PostmanMsg: {}", e);
+                        error!("failed to send PostmanMsg to : {}", e);
                     });
                 }
                 _ => {

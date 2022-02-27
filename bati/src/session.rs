@@ -275,7 +275,6 @@ impl Session {
         let mut data = data.unwrap();
 
         data.session_id = Some(self.id.clone());
-        data.sessionid = Some(self.id.clone());
         self.encoder = Some(Encoder::new(&data.accept_encoding));
 
         let data = serde_json::to_string(&data).unwrap();
@@ -363,7 +362,9 @@ impl Session {
                     warn!("failed to send HubSessionUnregMsg: {} - {}", self.id, e);
                 });
         }
-        self.ws_sink.take().unwrap().io().close();
+        if let Some(ws) = self.ws_sink.take() {
+            ws.io().close();
+        }
     }
 
     fn gen_init_resp_data(&self, data: SessionInitMsgData) -> Result<SessionInitMsgData, String> {
