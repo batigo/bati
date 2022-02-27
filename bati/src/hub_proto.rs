@@ -1,6 +1,6 @@
 use crate::const_proto::*;
 use crate::encoding::*;
-use crate::session_proto::SessionSender;
+use crate::conn_proto::ConnSender;
 use bati_lib as lib;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
@@ -20,8 +20,8 @@ impl HubSender {
         self.0.send(msg).await
     }
 
-    pub async fn send_session_msg(&mut self, msg: Session2HubMsg) -> SendResult {
-        self.send(HubMessage::FromSession(msg)).await
+    pub async fn send_session_msg(&mut self, msg: Conn2HubMsg) -> SendResult {
+        self.send(HubMessage::FromConn(msg)).await
     }
 
     pub async fn send_pilot_msg(&mut self, msg: Pilot2HubMsg) -> SendResult {
@@ -42,7 +42,7 @@ impl HubReceiver {
 }
 
 pub enum HubMessage {
-    FromSession(Session2HubMsg),
+    FromConn(Conn2HubMsg),
     FromPilot(Pilot2HubMsg),
     FromTimer(Timer2HubMsg),
 }
@@ -50,58 +50,58 @@ pub enum HubMessage {
 // recved from pilot
 #[derive(Clone, Debug)]
 pub enum Pilot2HubMsg {
-    Biz(HubChannelBizMsg),
-    JoinChannel(HubJoinChannelMsg),
+    Biz(HubServiceBizMsg),
+    JoinChannel(HubJoinServiceMsg),
     LeaveRoom(HubLeaveRoomMsg),
-    ChannelConf(lib::ChannelConf),
+    ChannelConf(lib::ServiceConf),
 }
 
 #[derive(Clone, Default, Debug)]
-pub struct HubChannelBizMsg {
+pub struct HubServiceBizMsg {
     pub id: String,
-    pub typ: ChannelBizMsgType,
-    pub sid: Option<String>,
-    pub channel: Option<String>,
+    pub typ: ServiceBizMsgType,
+    pub cid: Option<String>,
+    pub service: Option<String>,
     pub room: Option<String>,
-    pub mids: Option<Vec<u64>>,
+    pub uids: Option<Vec<u64>>,
     pub ratio: Option<u8>,
     pub whites: Option<Vec<String>>,
     pub blacks: Option<Vec<String>>,
-    pub data: ChannelBizData,
+    pub data: ServiceBizData,
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum ChannelBizMsgType {
-    Session,
+pub enum ServiceBizMsgType {
+    Conn,
     Room,
     Channel,
     Broadcast,
 }
 
-impl Default for ChannelBizMsgType {
+impl Default for ServiceBizMsgType {
     fn default() -> Self {
-        ChannelBizMsgType::Session
+        ServiceBizMsgType::Conn
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ChannelBizData {
+pub struct ServiceBizData {
     raw_data: Bytes,
     encoding_data: Vec<Option<Bytes>>,
 }
 
-impl Default for ChannelBizData {
+impl Default for ServiceBizData {
     fn default() -> Self {
-        ChannelBizData {
+        ServiceBizData {
             raw_data: Bytes::from(""),
             encoding_data: vec![None, None],
         }
     }
 }
 
-impl ChannelBizData {
+impl ServiceBizData {
     pub fn new(raw_data: Bytes) -> Self {
-        ChannelBizData {
+        ServiceBizData {
             raw_data,
             encoding_data: vec![None, None],
         }
@@ -144,14 +144,14 @@ impl ChannelBizData {
 }
 
 #[derive(Clone, Debug)]
-pub struct HubJoinChannelMsg {
+pub struct HubJoinServiceMsg {
     pub sid: String,
     pub channel: String,
     pub rooms: Vec<String>,
     pub multi_rooms: bool,
 }
 
-impl fmt::Display for HubJoinChannelMsg {
+impl fmt::Display for HubJoinServiceMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
@@ -181,53 +181,53 @@ impl fmt::Display for HubLeaveRoomMsg {
 
 // recved from session
 #[derive(Clone)]
-pub enum Session2HubMsg {
-    Register(SessionRegMsg),
-    Unregister(SessionUnregMsg),
+pub enum Conn2HubMsg {
+    Register(ConnRegMsg),
+    Unregister(ConnUnregMsg),
 }
 
-impl fmt::Display for Session2HubMsg {
+impl fmt::Display for Conn2HubMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Session2HubMsg::Register(msg) => {
-                write!(f, "Session2HubMsg::Rgister::{}", msg)
+            Conn2HubMsg::Register(msg) => {
+                write!(f, "Conn2HubMsg::Rgister::{}", msg)
             }
-            Session2HubMsg::Unregister(msg) => {
-                write!(f, "Session2HubMsg::Unregister::{}", msg)
+            Conn2HubMsg::Unregister(msg) => {
+                write!(f, "Conn2HubMsg::Unregister::{}", msg)
             }
         }
     }
 }
 
 #[derive(Clone)]
-pub struct SessionRegMsg {
-    pub sid: String,
+pub struct ConnRegMsg {
+    pub cid: String,
     pub did: String,
     pub ip: Option<String>,
     pub uid: String,
     pub encoder: Encoder,
     pub dt: DeviceType,
-    pub addr: SessionSender,
+    pub addr: ConnSender,
 }
 
-impl fmt::Display for SessionRegMsg {
+impl fmt::Display for ConnRegMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SessionRegMsg: sid:{}, ", self.sid)
+        write!(f, "ConnRegMsg: sid:{}, ", self.cid)
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SessionUnregMsg {
-    pub sid: String,
+pub struct ConnUnregMsg {
+    pub cid: String,
     pub did: String,
     pub uid: String,
     pub dt: DeviceType,
     pub ip: Option<String>,
 }
 
-impl fmt::Display for SessionUnregMsg {
+impl fmt::Display for ConnUnregMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "SessionUnregMsg: sid:{}, ", self.sid)
+        write!(f, "ConnUnregMsg: sid:{}, ", self.cid)
     }
 }
 

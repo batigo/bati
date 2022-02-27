@@ -1,15 +1,15 @@
 use crate::hub_proto::HubSender;
 use futures::{channel::mpsc, SinkExt, StreamExt};
 
-use bati_lib::{ChannelConf, PostmanMsg};
+use bati_lib::{ServiceConf, PostmanMsg};
 
 type SendResult = Result<(), mpsc::SendError>;
 
 pub enum PilotMessage {
-    FromSession(Session2PilotMsg),
+    FromConn(Conn2PilotMsg),
     FromHub(Hub2PilotMsg),
     FromMaster(PilotAddHubMsg),
-    FromChanFinder(ChannelConf),
+    FromChanFinder(ServiceConf),
     FromPostman(PostmanMsg),
 }
 
@@ -21,8 +21,8 @@ impl PilotSender {
         self.0.send(msg).await
     }
 
-    pub async fn send_session_msg(&mut self, msg: Session2PilotMsg) -> SendResult {
-        self.send(PilotMessage::FromSession(msg)).await
+    pub async fn send_conn_msg(&mut self, msg: Conn2PilotMsg) -> SendResult {
+        self.send(PilotMessage::FromConn(msg)).await
     }
 
     pub async fn send_hub_msg(&mut self, msg: Hub2PilotMsg) -> SendResult {
@@ -33,7 +33,7 @@ impl PilotSender {
         self.send(PilotMessage::FromMaster(msg)).await
     }
 
-    pub async fn send_chanfinder_msg(&mut self, msg: ChannelConf) -> SendResult {
+    pub async fn send_servicefinder_msg(&mut self, msg: ServiceConf) -> SendResult {
         self.send(PilotMessage::FromChanFinder(msg)).await
     }
 
@@ -62,15 +62,13 @@ pub struct PilotAddHubMsg {
     pub ix: usize,
 }
 
-// recv from hub
 #[derive(Clone, Debug)]
 pub enum Hub2PilotMsg {
     ChannelMsg(PilotChannelMsg),
     EncodingMsg(&'static str),
 }
 
-// recv from session
-pub type Session2PilotMsg = PilotChannelMsg;
+pub type Conn2PilotMsg = PilotChannelMsg;
 
 #[derive(Debug, Clone)]
 pub struct PilotChannelMsg {

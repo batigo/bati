@@ -1,11 +1,11 @@
-pub mod chanmsg;
-mod channel;
-mod chanregistry;
+pub mod service_msg;
+mod service;
+mod service_registry;
 mod kafka;
 mod postman;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use self::{chanmsg::*, channel::*, chanregistry::*, postman::*};
+pub use self::{service_msg::*, service::*, service_registry::*, postman::*};
 use std::convert::TryInto;
 
 pub fn gen_msg_id() -> String {

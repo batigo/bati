@@ -3,7 +3,7 @@ use crate::encoding::*;
 use crate::hub_proto::*;
 use crate::metric;
 use crate::pilot_proto::*;
-use crate::session_proto::*;
+use crate::conn_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
 use log::{debug, error, info, warn};
@@ -17,7 +17,7 @@ use zstd::zstd_safe::WriteBuf;
 const HEARTBEAT_INTERVAL_SEC: u32 = 60;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(180);
 
-pub struct Session {
+pub struct Conn {
     id: String,
     uid: String,
     did: String,
@@ -28,12 +28,12 @@ pub struct Session {
     hub: HubSender,
     join_hub: bool,
     pilot: PilotSender,
-    msg_sender: SessionSender,
-    msg_receiver: SessionReceiver,
+    msg_sender: ConnSender,
+    msg_receiver: ConnReceiver,
     ws_sink: Option<WsSink>,
 }
 
-impl Session {
+impl Conn {
     pub fn new(
         uid: String,
         did: String,
@@ -42,11 +42,11 @@ impl Session {
         hub: HubSender,
         pilot: PilotSender,
         worker_index: usize,
-    ) -> Session {
+    ) -> Conn {
         let id = gen_session_id(&did, &uid, worker_index);
-        let (msg_sender, msg_receiver) = new_session_channel(&id, 32);
+        let (msg_sender, msg_receiver) = new_conn_channel(&id, 32);
 
-        Session {
+        Conn {
             id,
             uid,
             ip,
@@ -63,7 +63,7 @@ impl Session {
         }
     }
 
-    pub fn start(self, ws_sink: WsSink) -> SessionSender {
+    pub fn start(self, ws_sink: WsSink) -> ConnSender {
         use crate::timer::start_session_hearbeat_cron;
         let session_sender = self.msg_sender.clone();
         rt::spawn(async move {
@@ -86,13 +86,13 @@ impl Session {
         session_sender
     }
 
-    async fn handle_message(&mut self, msg: SessionMsg) -> bool {
+    async fn handle_message(&mut self, msg: ConnMsg) -> bool {
         match msg {
-            SessionMsg::FromMaster(msg) => {
+            ConnMsg::FromMaster(msg) => {
                 self.hb = Instant::now();
                 match msg {
-                    Master2SessionMsg::Shutdown => false,
-                    Master2SessionMsg::Frame(frame) => match frame {
+                    Master2ConnMsg::Shutdown => false,
+                    Master2ConnMsg::Frame(frame) => match frame {
                         WsFrame::Ping(msg) => {
                             debug!("recv ping from session: {}", self.id);
                             self.send_client_msg(WsMessage::Pong(msg)).await
@@ -127,14 +127,14 @@ impl Session {
                     },
                 }
             }
-            SessionMsg::FromHub(msg) => {
+            ConnMsg::FromHub(msg) => {
                 debug!("session recv SessionHubMsg: {} - {:?}", self.id, msg);
                 return match msg {
-                    Hub2SessionMsg::QUIT => {
+                    Hub2ConnMsg::QUIT => {
                         warn!("recv quit msg from hub: {}", self.id);
                         false
                     }
-                    Hub2SessionMsg::BIZ(bs) => {
+                    Hub2ConnMsg::BIZ(bs) => {
                         debug!(
                             "send biz msg to session: {}, msg: {}",
                             self.id,
@@ -144,8 +144,8 @@ impl Session {
                     }
                 };
             }
-            SessionMsg::FromTimer(msg) => match msg {
-                Timer2SessionMsg::HearBeatCheck => {
+            ConnMsg::FromTimer(msg) => match msg {
+                Timer2ConnMsg::HearBeatCheck => {
                     if Instant::now().duration_since(self.hb) > CLIENT_TIMEOUT {
                         warn!("session timeout: {}", self.id);
                         return false;
@@ -254,7 +254,7 @@ impl Session {
             return;
         }
 
-        let r: serde_json::Result<SessionInitMsgData> =
+        let r: serde_json::Result<ConnInitMsgData> =
             serde_json::from_str(msg.data.as_ref().unwrap().get());
         if r.is_err() {
             warn!("recv init msg from inited session: {}", self.id);
@@ -272,9 +272,8 @@ impl Session {
             return self.quit().await;
         }
 
-        let mut data = data.unwrap();
+        let data = data.unwrap();
 
-        data.session_id = Some(self.id.clone());
         self.encoder = Some(Encoder::new(&data.accept_encoding));
 
         let data = serde_json::to_string(&data).unwrap();
@@ -301,15 +300,15 @@ impl Session {
 
     async fn proc_biz_msg(&mut self, msg: &mut ClientMsg) {
         debug!("proc biz msg: {}", msg.id);
-        let mut channel_msg = lib::ChannelMsg::new();
+        let mut channel_msg = lib::ServiceMsg::new();
         channel_msg.data = msg.data.take();
-        channel_msg.sid = Some(self.id.clone());
+        channel_msg.cid = Some(self.id.clone());
         channel_msg.ip = Some(self.ip.clone());
         channel_msg.uid = Some(self.uid.clone());
         match serde_json::to_vec(&channel_msg) {
             Ok(bs) => {
                 self.pilot
-                    .send_session_msg(Session2PilotMsg {
+                    .send_conn_msg(Conn2PilotMsg {
                         channel: msg.channel_id.take().unwrap(),
                         data: bytes::Bytes::from(bs),
                     })
@@ -350,8 +349,8 @@ impl Session {
         );
         if self.join_hub {
             self.hub
-                .send_session_msg(Session2HubMsg::Unregister(SessionUnregMsg {
-                    sid: self.id.clone(),
+                .send_session_msg(Conn2HubMsg::Unregister(ConnUnregMsg {
+                    cid: self.id.clone(),
                     uid: self.uid.clone(),
                     did: self.did.clone(),
                     dt: self.dt,
@@ -367,16 +366,8 @@ impl Session {
         }
     }
 
-    fn gen_init_resp_data(&self, data: SessionInitMsgData) -> Result<SessionInitMsgData, String> {
-        if data.content_encoding.ne("application/json") {
-            return Err(format!(
-                "unsupport content encoding: {}",
-                data.content_encoding
-            ));
-        }
-
-        let mut resp_msg = SessionInitMsgData {
-            content_encoding: "application/json".to_string(),
+    fn gen_init_resp_data(&self, data: ConnInitMsgData) -> Result<ConnInitMsgData, String> {
+        let mut resp_msg = ConnInitMsgData {
             ping_interval: HEARTBEAT_INTERVAL_SEC,
             ..Default::default()
         };
@@ -409,8 +400,8 @@ impl Session {
     }
 
     async fn join_hub(&mut self) {
-        let msg = Session2HubMsg::Register(SessionRegMsg {
-            sid: self.id.clone(),
+        let msg = Conn2HubMsg::Register(ConnRegMsg {
+            cid: self.id.clone(),
             uid: self.uid.clone(),
             did: self.did.clone(),
             dt: self.dt,
@@ -430,7 +421,7 @@ impl Session {
     }
 }
 
-impl fmt::Display for Session {
+impl fmt::Display for Conn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,

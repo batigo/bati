@@ -4,7 +4,7 @@ use crate::hub_proto::*;
 use crate::metric;
 use crate::metric_proto::*;
 use crate::pilot_proto::*;
-use crate::session_proto::*;
+use crate::conn_proto::*;
 use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
@@ -14,54 +14,54 @@ use std::rc::Rc;
 
 pub struct Hub {
     ix: usize,
-    sessions: HashMap<String, Rc<Session>>,
-    rooms: HashMap<String, HashMap<String, Rc<Session>>>,
-    session_rooms: HashMap<String, HashSet<String>>,
-    channels: HashMap<String, HashMap<String, Rc<Session>>>,
-    session_channels: HashMap<String, HashSet<String>>,
-    uid_sessions: HashMap<String, HashSet<String>>,
-    dt_sessions: HashMap<DeviceType, u64>,
+    conns: HashMap<String, Rc<Conn>>,
+    rooms: HashMap<String, HashMap<String, Rc<Conn>>>,
+    conn_rooms: HashMap<String, HashSet<String>>,
+    services: HashMap<String, HashMap<String, Rc<Conn>>>,
+    conn_services: HashMap<String, HashSet<String>>,
+    uid_conns: HashMap<String, HashSet<String>>,
+    dt_conns: HashMap<DeviceType, u64>,
     rand: rand::rngs::ThreadRng,
     pilot: PilotSender,
     metric_collector: MetricSender,
-    channel_confs: HashMap<String, lib::ChannelConf>,
+    service_confs: HashMap<String, lib::ServiceConf>,
     encoders: Vec<Encoder>,
     msg_receiver: HubReceiver,
     msg_sender: HubSender,
 }
 
 #[derive(Clone)]
-struct Session {
+struct Conn {
     uid: String,
     encoder: Encoder,
-    addr: SessionSender,
+    addr: ConnSender,
 }
 
-impl Session {
-    async fn send_session_msg(&self, sid: &str, msg: Hub2SessionMsg) {
+impl Conn {
+    async fn send_conn_msg(&self, sid: &str, msg: Hub2ConnMsg) {
         self.addr.send_hub_msg(msg).await.unwrap_or_else(|e| {
-            warn!("failed to send session biz msg: {} - {}", sid, e);
+            warn!("failed to send conn biz msg: {} - {}", sid, e);
         });
     }
 }
 
-impl std::fmt::Display for Session {
+impl std::fmt::Display for Conn {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(
             f,
-            "session, id: {}, endcode: {}",
+            "conn, id: {}, endcode: {}",
             self.addr.id, self.encoder
         )
     }
 }
 
 #[derive(PartialEq)]
-struct ChannelRoom {
-    channel: String,
+struct ServiceRoom {
+    service: String,
     room: String,
 }
 
-impl ChannelRoom {
+impl ServiceRoom {
     // fn parse_room_id(room_id: &str) -> Result<Self, &'static str> {
     //     let v: Vec<&str> = room_id.split("@_@").collect();
     //     if v.len() != 2 {
@@ -98,22 +98,23 @@ impl Hub {
             rand,
             pilot,
             metric_collector,
-            sessions: HashMap::with_capacity(10240),
+            conns: HashMap::with_capacity(10240),
             rooms: HashMap::with_capacity(1024),
-            session_rooms: HashMap::with_capacity(10240),
-            channels: HashMap::with_capacity(32),
-            session_channels: HashMap::with_capacity(10240),
-            uid_sessions: HashMap::with_capacity(10240),
-            dt_sessions: HashMap::with_capacity(3),
-            channel_confs: HashMap::with_capacity(32),
+            conn_rooms: HashMap::with_capacity(10240),
+            services: HashMap::with_capacity(32),
+            conn_services: HashMap::with_capacity(10240),
+            uid_conns: HashMap::with_capacity(10240),
+            dt_conns: HashMap::with_capacity(4),
+            service_confs: HashMap::with_capacity(32),
             encoders: vec![],
             msg_receiver: receiver,
             msg_sender: sender,
         };
 
-        hub.dt_sessions.insert(DEVICE_TYPE_ANDROID, 0);
-        hub.dt_sessions.insert(DEVICE_TYPE_IOS, 0);
-        hub.dt_sessions.insert(DEVICE_TYPE_X, 0);
+        hub.dt_conns.insert(DEVICE_TYPE_ANDROID, 0);
+        hub.dt_conns.insert(DEVICE_TYPE_IOS, 0);
+        hub.dt_conns.insert(DEVICE_TYPE_WEB, 0);
+        hub.dt_conns.insert(DEVICE_TYPE_X, 0);
         hub
     }
 
@@ -137,12 +138,12 @@ impl Hub {
 
     async fn handle_message(&mut self, msg: HubMessage) {
         match msg {
-            HubMessage::FromSession(msg) => {
+            HubMessage::FromConn(msg) => {
                 debug!("recv Session2HubMsg in hub-{}: {}", self.ix, msg);
                 match msg {
-                    Session2HubMsg::Register(msg) => self.handle_session_register_msg(msg).await,
-                    Session2HubMsg::Unregister(msg) => {
-                        self.handle_session_unregister_msg(msg).await
+                    Conn2HubMsg::Register(msg) => self.handle_conn_register_msg(msg).await,
+                    Conn2HubMsg::Unregister(msg) => {
+                        self.handle_conn_unregister_msg(msg).await
                     }
                 }
             }
@@ -150,15 +151,15 @@ impl Hub {
                 debug!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
                 match msg {
                     Pilot2HubMsg::Biz(msg) => match msg.typ {
-                        ChannelBizMsgType::Session => self.handle_session_biz_msg(msg).await,
-                        ChannelBizMsgType::Room => self.handle_room_biz_msg(msg).await,
-                        ChannelBizMsgType::Channel => self.handle_channel_biz_msg(msg).await,
-                        ChannelBizMsgType::Broadcast => self.broadcast_bizmsg(msg).await,
+                        ServiceBizMsgType::Conn => self.handle_conn_biz_msg(msg).await,
+                        ServiceBizMsgType::Room => self.handle_room_biz_msg(msg).await,
+                        ServiceBizMsgType::Channel => self.handle_channel_biz_msg(msg).await,
+                        ServiceBizMsgType::Broadcast => self.broadcast_bizmsg(msg).await,
                     },
                     Pilot2HubMsg::JoinChannel(msg) => self.handle_join_channel_msg(msg).await,
                     Pilot2HubMsg::LeaveRoom(msg) => self.handle_leave_room_msg(msg).await,
                     Pilot2HubMsg::ChannelConf(conf) => {
-                        self.channel_confs.insert(conf.name.clone(), conf);
+                        self.service_confs.insert(conf.name.clone(), conf);
                     }
                 }
             }
@@ -169,86 +170,86 @@ impl Hub {
         }
     }
 
-    fn get_session(&self, sid: &str) -> Option<&Rc<Session>> {
-        self.sessions.get(sid)
+    fn get_conn(&self, cid: &str) -> Option<&Rc<Conn>> {
+        self.conns.get(cid)
     }
 
-    fn get_session_clone(&self, sid: &str) -> Option<Rc<Session>> {
-        self.sessions.get(sid).cloned()
+    fn get_conn_clone(&self, sid: &str) -> Option<Rc<Conn>> {
+        self.conns.get(sid).cloned()
     }
 
     fn get_uid_sids_clone(&self, uid: &str) -> Option<HashSet<String>> {
-        self.uid_sessions.get(uid).cloned()
+        self.uid_conns.get(uid).cloned()
     }
 
-    fn get_room(&self, room: &str) -> Option<&HashMap<String, Rc<Session>>> {
+    fn get_room(&self, room: &str) -> Option<&HashMap<String, Rc<Conn>>> {
         self.rooms.get(room)
     }
 
-    fn get_channel(&self, channel: &str) -> Option<&HashMap<String, Rc<Session>>> {
-        self.channels.get(channel)
+    fn get_channel(&self, channel: &str) -> Option<&HashMap<String, Rc<Conn>>> {
+        self.services.get(channel)
     }
 
-    fn get_session_rooms(&self, sid: &str) -> Option<&HashSet<String>> {
-        self.session_rooms.get(sid)
+    fn get_conn_rooms(&self, sid: &str) -> Option<&HashSet<String>> {
+        self.conn_rooms.get(sid)
     }
 
-    fn add_session_room(&mut self, sid: &str, room: &str) {
-        if let Some(rooms) = self.session_rooms.get_mut(sid) {
+    fn add_conn_room(&mut self, sid: &str, room: &str) {
+        if let Some(rooms) = self.conn_rooms.get_mut(sid) {
             rooms.insert(room.to_string());
             return;
         }
 
         let mut s = HashSet::new();
         s.insert(room.to_string());
-        self.session_rooms.insert(sid.to_string(), s);
+        self.conn_rooms.insert(sid.to_string(), s);
     }
 
-    fn del_session_room(&mut self, sid: &str, room: &str) {
-        if let Some(rooms) = self.session_rooms.get_mut(sid) {
+    fn del_conn_room(&mut self, sid: &str, room: &str) {
+        if let Some(rooms) = self.conn_rooms.get_mut(sid) {
             rooms.remove(room);
             if rooms.is_empty() {
-                self.session_rooms.remove(sid);
+                self.conn_rooms.remove(sid);
             }
         }
     }
 
-    fn get_session_channels(&self, sid: &str) -> Option<&HashSet<String>> {
-        self.session_channels.get(sid)
+    fn get_conn_services(&self, sid: &str) -> Option<&HashSet<String>> {
+        self.conn_services.get(sid)
     }
 
-    fn add_session_channel(&mut self, sid: &str, channel: &str) {
-        if let Some(channels) = self.session_channels.get_mut(sid) {
-            channels.insert(channel.to_string());
+    fn add_conn_service(&mut self, sid: &str, channel: &str) {
+        if let Some(services) = self.conn_services.get_mut(sid) {
+            services.insert(channel.to_string());
             return;
         }
 
         let mut s = HashSet::new();
         s.insert(channel.to_string());
-        self.session_channels.insert(sid.to_string(), s);
+        self.conn_services.insert(sid.to_string(), s);
     }
 
-    fn del_session_channel(&mut self, sid: &str, channel: &str) {
-        if let Some(channels) = self.session_channels.get_mut(sid) {
-            channels.remove(channel);
-            if channels.is_empty() {
-                self.session_channels.remove(sid);
+    fn del_conn_service(&mut self, sid: &str, service: &str) {
+        if let Some(services) = self.conn_services.get_mut(sid) {
+            services.remove(service);
+            if services.is_empty() {
+                self.conn_services.remove(sid);
             }
         }
     }
 
     fn add_uid(&mut self, uid: &str, sid: &str) {
-        self.uid_sessions
+        self.uid_conns
             .entry(uid.to_string())
             .or_insert_with(HashSet::new)
             .insert(sid.to_string());
     }
 
     fn remove_uid(&mut self, uid: &str, sid: &str) -> bool {
-        match self.uid_sessions.get_mut(uid) {
+        match self.uid_conns.get_mut(uid) {
             Some(sessions) => {
                 if sessions.len() <= 1 {
-                    self.uid_sessions.remove(uid);
+                    self.uid_conns.remove(uid);
                 } else {
                     sessions.remove(sid);
                 }
@@ -259,20 +260,20 @@ impl Hub {
     }
 
     fn incr_dt_count(&mut self, dt: DeviceType) {
-        *self.dt_sessions.get_mut(dt).unwrap() += 1;
+        *self.dt_conns.get_mut(dt).unwrap() += 1;
     }
 
     fn decr_dt_count(&mut self, dt: DeviceType) {
-        *self.dt_sessions.get_mut(dt).unwrap() -= 1;
+        *self.dt_conns.get_mut(dt).unwrap() -= 1;
     }
 
-    fn join_room(&mut self, sid: &str, channel: &str, room: &str, multi_rooms: bool) {
-        let room_id = ChannelRoom::gen_room_id(channel, room);
+    fn join_room(&mut self, sid: &str, service: &str, room: &str, multi_rooms: bool) {
+        let room_id = ServiceRoom::gen_room_id(service, room);
         if room_id.is_err() {
             error!(
                 "recv bad join room data, sid: {}, channel: {}, room: {}, err: {}",
                 sid,
-                channel,
+                service,
                 room,
                 room_id.err().unwrap()
             );
@@ -281,20 +282,20 @@ impl Hub {
 
         let room_id = room_id.unwrap();
 
-        let session = self.get_session_clone(sid);
-        if session.is_none() {
+        let conn = self.get_conn_clone(sid);
+        if conn.is_none() {
             return;
         }
-        let session = session.unwrap();
+        let conn = conn.unwrap();
 
         debug!(
-            "session join room, uid: {}, sid: {}, room: {}",
-            session.uid, sid, room_id
+            "conn join room, uid: {}, sid: {}, room: {}",
+            conn.uid, sid, room_id
         );
 
-        if !multi_rooms && self.get_session_rooms(sid).is_some() {
+        if !multi_rooms && self.get_conn_rooms(sid).is_some() {
             let quit_rooms: Vec<_> = self
-                .get_session_rooms(sid)
+                .get_conn_rooms(sid)
                 .unwrap()
                 .iter()
                 .map(|x| x.clone())
@@ -302,55 +303,55 @@ impl Hub {
             quit_rooms.iter().for_each(|room| self.quit_room(sid, room));
         }
 
-        self.add_session_room(sid, &room_id);
+        self.add_conn_room(sid, &room_id);
         self.rooms
             .entry(room_id)
             .or_insert_with(HashMap::new)
-            .insert(sid.to_owned().to_string(), session.clone());
+            .insert(sid.to_owned().to_string(), conn.clone());
     }
 
     fn quit_room(&mut self, sid: &str, room: &str) {
-        if let Some(sessions) = self.rooms.get_mut(room) {
-            debug!("session quit room, sid: {}, room: {}", sid, &room);
-            sessions.remove(sid);
-            if sessions.is_empty() {
+        if let Some(conns) = self.rooms.get_mut(room) {
+            debug!("conn quit room, sid: {}, room: {}", sid, &room);
+            conns.remove(sid);
+            if conns.is_empty() {
                 self.rooms.remove(room);
             }
         }
 
-        self.del_session_room(sid, room);
+        self.del_conn_room(sid, room);
     }
 
-    fn join_channel(&mut self, sid: &str, channel: &str) -> bool {
-        let session = self.get_session_clone(sid);
-        if session.is_none() {
+    fn join_service(&mut self, sid: &str, service: &str) -> bool {
+        let conn = self.get_conn_clone(sid);
+        if conn.is_none() {
             return false;
         }
 
-        let session = session.unwrap();
-        if let Some(channels) = self.channels.get_mut(channel) {
-            if !channels.contains_key(sid) {
-                channels.insert(sid.to_string(), session.clone());
-                self.add_session_channel(sid, channel);
+        let conn = conn.unwrap();
+        if let Some(services) = self.services.get_mut(service) {
+            if !services.contains_key(sid) {
+                services.insert(sid.to_string(), conn.clone());
+                self.add_conn_service(sid, service);
             }
         } else {
-            self.channels
-                .entry(channel.to_string())
+            self.services
+                .entry(service.to_string())
                 .or_insert_with(HashMap::new)
-                .insert(sid.to_string(), session.clone());
-            self.add_session_channel(sid, channel);
+                .insert(sid.to_string(), conn.clone());
+            self.add_conn_service(sid, service);
         }
 
         true
     }
 
-    fn quit_channel(&mut self, sid: &str, channel: &str) -> bool {
-        let quited = match self.channels.get_mut(channel) {
-            Some(sessions) => {
-                debug!("session quit channel, sid: {}, channel: {}", sid, channel);
-                sessions.remove(sid);
-                if sessions.len() == 0 {
-                    self.channels.remove(channel);
+    fn quit_service(&mut self, sid: &str, service: &str) -> bool {
+        let quited = match self.services.get_mut(service) {
+            Some(conns) => {
+                debug!("conn quit channel, sid: {}, channel: {}", sid, service);
+                conns.remove(sid);
+                if conns.len() == 0 {
+                    self.services.remove(service);
                 }
                 true
             }
@@ -358,23 +359,23 @@ impl Hub {
         };
 
         if quited {
-            self.del_session_channel(sid, channel);
+            self.del_conn_service(sid, service);
         }
 
         quited
     }
 
-    async fn handle_session_register_msg(&mut self, msg: SessionRegMsg) {
-        debug!("new session registered in hub-{}: {}", self.ix, &msg.sid);
+    async fn handle_conn_register_msg(&mut self, msg: ConnRegMsg) {
+        debug!("new conn registered in hub-{}: {}", self.ix, &msg.cid);
         self.incr_dt_count(msg.dt);
-        self.add_uid(&msg.uid, &msg.sid);
+        self.add_uid(&msg.uid, &msg.cid);
 
-        let session = Rc::new(Session {
+        let conn = Rc::new(Conn {
             uid: msg.uid,
             addr: msg.addr,
             encoder: msg.encoder.clone(),
         });
-        self.sessions.insert(msg.sid, session);
+        self.conns.insert(msg.cid, conn);
         if !self.encoders.contains(&msg.encoder) {
             self.encoders.push(msg.encoder.clone());
             self.pilot
@@ -384,54 +385,54 @@ impl Hub {
         }
     }
 
-    async fn handle_session_unregister_msg(&mut self, msg: SessionUnregMsg) {
-        debug!("session unregistered in hub-{}: {}", self.ix, msg.sid);
-        let session = self.sessions.remove(&msg.sid);
-        if session.is_none() {
+    async fn handle_conn_unregister_msg(&mut self, msg: ConnUnregMsg) {
+        debug!("conn unregistered in hub-{}: {}", self.ix, msg.cid);
+        let conn = self.conns.remove(&msg.cid);
+        if conn.is_none() {
             return;
         }
 
         self.decr_dt_count(msg.dt);
-        self.remove_uid(&msg.uid, &msg.sid);
+        self.remove_uid(&msg.uid, &msg.cid);
 
-        let session = session.unwrap();
-        debug!("session unreg data: {} - {}", msg.sid, session);
+        let session = conn.unwrap();
+        debug!("conn unreg data: {} - {}", msg.cid, session);
 
         let mut quit_rooms = HashSet::new();
-        if let Some(rooms) = self.get_session_rooms(&msg.sid) {
+        if let Some(rooms) = self.get_conn_rooms(&msg.cid) {
             quit_rooms = rooms.clone();
         }
         quit_rooms
             .iter()
-            .for_each(|room| self.quit_room(&msg.sid, room));
+            .for_each(|room| self.quit_room(&msg.cid, room));
 
-        let mut quit_channels = HashSet::new();
-        if let Some(channels) = self.get_session_channels(&msg.sid) {
-            quit_channels = channels.clone();
+        let mut quit_services = HashSet::new();
+        if let Some(services) = self.get_conn_services(&msg.cid) {
+            quit_services = services.clone();
         }
 
-        for channel in quit_channels {
-            if !self.quit_channel(&msg.sid, &channel) {
+        for service in quit_services {
+            if !self.quit_service(&msg.cid, &service) {
                 continue;
             }
-            if let Some(conf) = self.channel_confs.get(&channel) {
+            if let Some(conf) = self.service_confs.get(&service) {
                 if !conf.enable_close_notify {
                     continue;
                 }
-                let mut channel_msg = lib::ChannelMsg::new();
-                channel_msg.sid = Some(msg.sid.clone());
-                channel_msg.typ = lib::CHAN_MSG_TYPE_CLIENT_QUIT;
-                channel_msg.uid = Some(msg.uid.clone());
-                channel_msg.sid = Some(msg.sid.clone());
-                channel_msg.ip = msg.ip.clone();
+                let mut service_msg = lib::ServiceMsg::new();
+                service_msg.cid = Some(msg.cid.clone());
+                service_msg.typ = lib::CHAN_MSG_TYPE_CONN_QUIT;
+                service_msg.uid = Some(msg.uid.clone());
+                service_msg.cid = Some(msg.cid.clone());
+                service_msg.ip = msg.ip.clone();
                 debug!(
                     "send client quit msg to channel: {} - {:?}",
-                    channel, channel_msg
+                    service, service_msg
                 );
                 self.pilot
                     .send_hub_msg(Hub2PilotMsg::ChannelMsg(PilotChannelMsg {
-                        channel,
-                        data: bytes::Bytes::from(serde_json::to_vec(&channel_msg).unwrap()),
+                        channel: service,
+                        data: bytes::Bytes::from(serde_json::to_vec(&service_msg).unwrap()),
                     }))
                     .await
                     .unwrap_or_else(|e| {
@@ -441,22 +442,22 @@ impl Hub {
         }
     }
 
-    async fn handle_session_biz_msg(&mut self, mut msg: HubChannelBizMsg) {
-        if msg.sid.is_none() {
+    async fn handle_conn_biz_msg(&mut self, mut msg: HubServiceBizMsg) {
+        if msg.cid.is_none() {
             warn!("empty sid for session biz msg: {}", msg.id);
             return;
         }
 
-        let sid = msg.sid.take().unwrap();
+        let sid = msg.cid.take().unwrap();
         debug!("handle session biz msg, sid: {:?}, msg: {}", sid, msg.id);
 
-        if let Some(session) = self.get_session(&sid) {
+        if let Some(session) = self.get_conn(&sid) {
             match msg.data.get_data_with_encoder(&session.encoder) {
                 Ok(data) => {
                     session
-                        .send_session_msg(&sid, Hub2SessionMsg::BIZ(data))
+                        .send_conn_msg(&sid, Hub2ConnMsg::BIZ(data))
                         .await;
-                    metric::inc_send_msg(msg.channel.as_ref().unwrap_or(&"x".to_string()), 1);
+                    metric::inc_send_msg(msg.service.as_ref().unwrap_or(&"x".to_string()), 1);
                 }
                 Err(e) => {
                     error!(
@@ -467,21 +468,21 @@ impl Hub {
             }
         } else {
             debug!(
-                "session not found for HubChannelBizMsg, sid: {}, msgid: {}",
+                "conn not found for HubChannelBizMsg, sid: {}, msgid: {}",
                 sid, msg.id
             );
         }
     }
 
-    async fn handle_room_biz_msg(&mut self, msg: HubChannelBizMsg) {
+    async fn handle_room_biz_msg(&mut self, msg: HubServiceBizMsg) {
         debug!("handle room biz msg: {}", msg.id);
-        if msg.channel.is_none() || msg.room.is_none() {
+        if msg.service.is_none() || msg.room.is_none() {
             warn!("bad msg: channel or room is empty - {}", msg.id);
             return;
         }
 
         if let Ok(ref room_id) =
-            ChannelRoom::gen_room_id(msg.channel.as_ref().unwrap(), msg.room.as_ref().unwrap())
+            ServiceRoom::gen_room_id(msg.service.as_ref().unwrap(), msg.room.as_ref().unwrap())
         {
             return self
                 .broadcast_channel_bizmsg(msg, self.get_room(room_id))
@@ -491,25 +492,25 @@ impl Hub {
         warn!(
             "bad channel room name, msgid: {}, channel: {}, room: {}",
             msg.id,
-            msg.channel.unwrap_or("x".to_string()),
+            msg.service.unwrap_or("x".to_string()),
             msg.room.unwrap_or("x".to_string())
         );
     }
 
-    async fn handle_channel_biz_msg(&mut self, msg: HubChannelBizMsg) {
+    async fn handle_channel_biz_msg(&mut self, msg: HubServiceBizMsg) {
         debug!("handle channel biz msg: {}", msg.id);
         if msg.room.is_some() {
             return self.handle_room_biz_msg(msg).await;
         }
 
-        let sessions = self.get_channel(msg.channel.as_ref().unwrap());
+        let sessions = self.get_channel(msg.service.as_ref().unwrap());
         self.broadcast_channel_bizmsg(msg, sessions).await
     }
 
     async fn broadcast_channel_bizmsg(
         &self,
-        mut msg: HubChannelBizMsg,
-        sessions: Option<&HashMap<String, Rc<Session>>>,
+        mut msg: HubServiceBizMsg,
+        sessions: Option<&HashMap<String, Rc<Conn>>>,
     ) {
         if sessions.is_none() {
             return;
@@ -532,7 +533,7 @@ impl Hub {
                     }
                     Ok(data) => {
                         session
-                            .send_session_msg(sid, Hub2SessionMsg::BIZ(data))
+                            .send_conn_msg(sid, Hub2ConnMsg::BIZ(data))
                             .await;
                         send_count += 1;
                     }
@@ -541,7 +542,7 @@ impl Hub {
         }
 
         metric::inc_send_msg(
-            match msg.channel.as_ref() {
+            match msg.service.as_ref() {
                 Some(s) => s.as_str(),
                 None => "x",
             },
@@ -549,8 +550,8 @@ impl Hub {
         );
     }
 
-    async fn broadcast_bizmsg(&mut self, mut msg: HubChannelBizMsg) {
-        if self.sessions.is_empty() {
+    async fn broadcast_bizmsg(&mut self, mut msg: HubServiceBizMsg) {
+        if self.conns.is_empty() {
             return;
         }
 
@@ -558,7 +559,7 @@ impl Hub {
         let whites = msg.whites.take();
         let blacks = msg.blacks.take();
         let ratio = msg.ratio.take();
-        for (sid, session) in self.sessions.iter() {
+        for (sid, session) in self.conns.iter() {
             if self.filter_session(&session.uid, &whites, &blacks, &ratio) {
                 continue;
             }
@@ -572,14 +573,14 @@ impl Hub {
                 }
                 Ok(data) => {
                     session
-                        .send_session_msg(sid, Hub2SessionMsg::BIZ(data))
+                        .send_conn_msg(sid, Hub2ConnMsg::BIZ(data))
                         .await;
                     send_count += 1;
                 }
             }
         }
         metric::inc_send_msg(
-            match msg.channel.as_ref() {
+            match msg.service.as_ref() {
                 Some(s) => s.as_str(),
                 None => "x",
             },
@@ -587,8 +588,8 @@ impl Hub {
         );
     }
 
-    async fn handle_join_channel_msg(&mut self, msg: HubJoinChannelMsg) {
-        if self.join_channel(&msg.sid, &msg.channel) {
+    async fn handle_join_channel_msg(&mut self, msg: HubJoinServiceMsg) {
+        if self.join_service(&msg.sid, &msg.channel) {
             msg.rooms
                 .iter()
                 .for_each(|room| self.join_room(&msg.sid, &msg.channel, room, msg.multi_rooms));
@@ -596,7 +597,7 @@ impl Hub {
     }
 
     fn proc_session_leave_room(&mut self, sid: &str, channel: String, room: String) {
-        if let Ok(ref room_id) = ChannelRoom::gen_room_id(&channel, &room) {
+        if let Ok(ref room_id) = ServiceRoom::gen_room_id(&channel, &room) {
             self.quit_room(sid, room_id);
         }
     }
@@ -645,17 +646,17 @@ impl Hub {
         debug!(
             "hub-{} stats, totoal-sessions: {}, android: {}, ios: {}, x: {}, channels: {}, rooms: {}, uids:{}",
             self.ix,
-            self.sessions.len(),
-            self.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(),
-            self.dt_sessions.get(DEVICE_TYPE_IOS).unwrap(),
-            self.dt_sessions.get(DEVICE_TYPE_X).unwrap(),
-            self.channels.len(),
+            self.conns.len(),
+            self.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(),
+            self.dt_conns.get(DEVICE_TYPE_IOS).unwrap(),
+            self.dt_conns.get(DEVICE_TYPE_X).unwrap(),
+            self.services.len(),
             self.rooms.len(),
-            self.uid_sessions.len(),
+            self.uid_conns.len(),
         );
 
         let channel_sessions: HashMap<String, u64> = self
-            .channels
+            .services
             .iter()
             .map(|(k, v)| (k.to_owned(), v.len() as u64))
             .collect();
@@ -664,7 +665,7 @@ impl Hub {
             .send_hub_msg(HubMetricMsg {
                 channel_sessions,
                 ix: self.ix,
-                dt_sessions: self.dt_sessions.clone(),
+                dt_sessions: self.dt_conns.clone(),
             })
             .await
             .unwrap_or_else(|e| error!("failed to send metric stat msg: {}", e));
@@ -680,9 +681,9 @@ mod test {
         let mut hub = Hub::new(1);
         let uid = 1;
         let sid = "abcd";
-        let msg = SessionRegMsg {
+        let msg = ConnRegMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             encoder: Encoder::new(NULLENCODER_NAME),
@@ -690,82 +691,82 @@ mod test {
             addr: None,
         };
 
-        hub.handle_session_register_msg(msg);
-        assert_eq!(hub.sessions.len(), 1);
-        assert_eq!(hub.sessions.get(sid).is_some(), true);
-        assert_eq!(hub.uid_sessions.get(&uid).unwrap().len(), 1);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_IOS).unwrap(), 1);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
+        hub.handle_conn_register_msg(msg);
+        assert_eq!(hub.conns.len(), 1);
+        assert_eq!(hub.conns.get(sid).is_some(), true);
+        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_IOS).unwrap(), 1);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
         assert_eq!(hub.encoders.contains(&Encoder::new(NULLENCODER_NAME)), true);
         assert_eq!(hub.encoders.contains(&Encoder::new(ZSTD_NAME)), false);
 
         let uid = 1;
         let sid = "abcde";
-        let msg = SessionRegMsg {
+        let msg = ConnRegMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             encoder: Encoder::new(ZSTD_NAME),
             dt: DEVICE_TYPE_ANDROID,
             addr: None,
         };
-        hub.handle_session_register_msg(msg);
-        assert_eq!(hub.sessions.len(), 2);
-        assert_eq!(hub.sessions.get(sid).is_some(), true);
-        assert_eq!(hub.uid_sessions.get(&uid).unwrap().len(), 2);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
+        hub.handle_conn_register_msg(msg);
+        assert_eq!(hub.conns.len(), 2);
+        assert_eq!(hub.conns.get(sid).is_some(), true);
+        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 2);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
         assert_eq!(hub.encoders.contains(&Encoder::new(ZSTD_NAME)), true);
 
         let uid = 2;
         let sid = "abcdef";
-        let msg = SessionRegMsg {
+        let msg = ConnRegMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             encoder: Encoder::new(ZSTD_NAME),
             dt: DEVICE_TYPE_ANDROID,
             addr: None,
         };
-        hub.handle_session_register_msg(msg);
-        assert_eq!(hub.sessions.len(), 3);
-        assert_eq!(hub.sessions.get(sid).is_some(), true);
-        assert_eq!(hub.uid_sessions.get(&uid).unwrap().len(), 1);
-        assert_eq!(hub.uid_sessions.len(), 2);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(), 2);
+        hub.handle_conn_register_msg(msg);
+        assert_eq!(hub.conns.len(), 3);
+        assert_eq!(hub.conns.get(sid).is_some(), true);
+        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
+        assert_eq!(hub.uid_conns.len(), 2);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 2);
         // encoders 不会重复膨胀
         assert_eq!(hub.encoders.len(), 2);
 
-        let msg = SessionUnregMsg {
+        let msg = ConnUnregMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             dt: DEVICE_TYPE_ANDROID,
         };
-        hub.handle_session_unregister_msg(msg);
-        assert_eq!(hub.sessions.len(), 2);
-        assert_eq!(hub.sessions.get(sid).is_some(), false);
-        assert_eq!(hub.uid_sessions.get(&uid).is_some(), false);
-        assert_eq!(hub.uid_sessions.len(), 1);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
+        hub.handle_conn_unregister_msg(msg);
+        assert_eq!(hub.conns.len(), 2);
+        assert_eq!(hub.conns.get(sid).is_some(), false);
+        assert_eq!(hub.uid_conns.get(&uid).is_some(), false);
+        assert_eq!(hub.uid_conns.len(), 1);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
         assert_eq!(hub.encoders.len(), 2);
 
         let uid = 1;
         let sid = "abcde";
-        let msg = SessionUnregMsg {
-            sid: sid.to_string(),
+        let msg = ConnUnregMsg {
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             dt: DEVICE_TYPE_ANDROID,
             uid,
         };
-        hub.handle_session_unregister_msg(msg);
-        assert_eq!(hub.sessions.len(), 1);
-        assert_eq!(hub.sessions.get(sid).is_some(), false);
-        assert_eq!(hub.uid_sessions.get(&uid).unwrap().len(), 1);
-        assert_eq!(*hub.dt_sessions.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
+        hub.handle_conn_unregister_msg(msg);
+        assert_eq!(hub.conns.len(), 1);
+        assert_eq!(hub.conns.get(sid).is_some(), false);
+        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
+        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
     }
 
     #[test]
@@ -773,7 +774,7 @@ mod test {
         let mut hub = Hub::new(1);
         let sid = "abc";
         let channel = "channel_1";
-        let msg = HubJoinChannelMsg {
+        let msg = HubJoinServiceMsg {
             sid: sid.to_string(),
             channel: channel.to_string(),
             rooms: vec!["room_1".to_string()],
@@ -782,7 +783,7 @@ mod test {
         hub.handle_join_channel_msg(msg);
         // room not register
         assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.channels.len(), 0);
+        assert_eq!(hub.services.len(), 0);
     }
 
     #[test]
@@ -791,9 +792,9 @@ mod test {
         let mut hub = Hub::new(1);
         let sid = "abc";
         let uid = 1;
-        let reg_session_msg = SessionRegMsg {
+        let reg_session_msg = ConnRegMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             encoder: Encoder::new(NULLENCODER_NAME),
@@ -801,9 +802,9 @@ mod test {
             addr: None,
         };
 
-        let unreg_session_msg = SessionUnregMsg {
+        let unreg_session_msg = ConnUnregMsg {
             uid,
-            sid: sid.to_string(),
+            cid: sid.to_string(),
             did: "".to_string(),
             ip: None,
             dt: DEVICE_TYPE_IOS,
@@ -811,7 +812,7 @@ mod test {
 
         let channel = "channel_1";
         let room = "room_1";
-        let join_channel_msg = HubJoinChannelMsg {
+        let join_channel_msg = HubJoinServiceMsg {
             sid: sid.to_string(),
             channel: channel.to_string(),
             rooms: vec![room.to_string()],
@@ -825,40 +826,40 @@ mod test {
             room: room.to_string(),
         };
 
-        hub.handle_session_register_msg(reg_session_msg.clone());
+        hub.handle_conn_register_msg(reg_session_msg.clone());
         hub.handle_join_channel_msg(join_channel_msg.clone());
         assert_eq!(hub.rooms.len(), 1);
-        assert_eq!(hub.channels.len(), 1);
+        assert_eq!(hub.services.len(), 1);
         assert_eq!(
-            hub.channels.get(channel).unwrap().get(sid).unwrap().uid,
+            hub.services.get(channel).unwrap().get(sid).unwrap().uid,
             uid
         );
-        let room_id = ChannelRoom::gen_room_id(channel, room).unwrap();
+        let room_id = ServiceRoom::gen_room_id(channel, room).unwrap();
         assert_eq!(hub.rooms.get(&room_id).unwrap().get(sid).unwrap().uid, uid);
-        assert_eq!(hub.get_session_rooms(sid).unwrap().len(), 1);
-        assert!(hub.get_session_rooms(sid).unwrap().contains(&room_id));
-        assert_eq!(hub.get_session_channels(sid).unwrap().len(), 1);
-        assert!(hub.get_session_channels(sid).unwrap().contains(channel));
+        assert_eq!(hub.get_conn_rooms(sid).unwrap().len(), 1);
+        assert!(hub.get_conn_rooms(sid).unwrap().contains(&room_id));
+        assert_eq!(hub.get_conn_services(sid).unwrap().len(), 1);
+        assert!(hub.get_conn_services(sid).unwrap().contains(channel));
 
         // session unreg, clear room & channel resource
-        hub.handle_session_unregister_msg(unreg_session_msg.clone());
+        hub.handle_conn_unregister_msg(unreg_session_msg.clone());
         assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.channels.len(), 0);
-        assert_eq!(hub.get_session_rooms(sid), None);
-        assert_eq!(hub.get_session_channels(sid), None);
+        assert_eq!(hub.services.len(), 0);
+        assert_eq!(hub.get_conn_rooms(sid), None);
+        assert_eq!(hub.get_conn_services(sid), None);
 
         // session leave room
-        hub.handle_session_register_msg(reg_session_msg.clone());
+        hub.handle_conn_register_msg(reg_session_msg.clone());
         hub.handle_join_channel_msg(join_channel_msg.clone());
         hub.handle_leave_room_msg(leave_room_msg.clone());
         assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.channels.len(), 1);
-        assert_eq!(hub.get_session_rooms(sid), None);
+        assert_eq!(hub.services.len(), 1);
+        assert_eq!(hub.get_conn_rooms(sid), None);
         // already in channel
-        assert_eq!(hub.channels.get(channel).unwrap().get(sid).is_some(), true);
+        assert_eq!(hub.services.get(channel).unwrap().get(sid).is_some(), true);
         // unreg session
-        hub.handle_session_unregister_msg(unreg_session_msg.clone());
-        assert_eq!(hub.channels.len(), 0);
+        hub.handle_conn_unregister_msg(unreg_session_msg.clone());
+        assert_eq!(hub.services.len(), 0);
     }
 
     #[test]

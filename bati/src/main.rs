@@ -12,18 +12,17 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub mod cfg;
-pub mod chanfinder;
+pub mod service_finder;
 mod const_proto;
 pub mod encoding;
 pub mod hub;
 pub mod hub_proto;
 pub mod metric;
 mod metric_proto;
-pub mod msgchan;
 pub mod pilot;
 pub mod pilot_proto;
-pub mod session;
-pub mod session_proto;
+pub mod conn;
+pub mod conn_proto;
 mod timer;
 pub mod utils;
 
@@ -45,7 +44,7 @@ async fn main() {
     init_logger(config.log.clone());
 
     let cpus = num_cpus::get();
-    let mut chan_finder = chanfinder::ChanFinder::new(config.channel_registry.clone());
+    let mut chan_finder = service_finder::ServiceFinder::new(config.channel_registry.clone());
 
     let metrics_collecor = metric::MetricCollector::new(cpus).start();
 
@@ -91,7 +90,7 @@ async fn main() {
             .state(hub_sender)
             .state(pilot)
             .state(ix)
-            .service(web::resource("/ws").to(ws_handler))
+            .service(web::resource("/ws").to(websocket_req_handler))
             .service(web::resource("/healthcheck").to(healthcheck_handler))
             .service(web::resource("/metrics").to(metrics_handler))
     })
@@ -119,7 +118,7 @@ struct Param {
 }
 
 #[derive(Clone)]
-struct SessionLite {
+struct ConnLite {
     ix: usize,
     uid: String,
     did: String,
@@ -129,7 +128,7 @@ struct SessionLite {
     pilot: PilotSender,
 }
 
-async fn ws_handler(
+async fn websocket_req_handler(
     req: HttpRequest,
     hub: web::types::State<HubSender>,
     pilot: web::types::State<PilotSender>,
@@ -139,7 +138,7 @@ async fn ws_handler(
     let ip = get_client_ip(&req);
     info!("new request: {}, ip: {}", req.query_string(), ip);
 
-    let ss = SessionLite {
+    let ss = ConnLite {
         ip,
         uid: param.uid.clone(),
         did: param.did.clone(),
@@ -150,7 +149,7 @@ async fn ws_handler(
     };
     ws::start(
         req,
-        map_config(fn_factory_with_config(ws_service), move |cfg| {
+        map_config(fn_factory_with_config(websocket_service), move |cfg| {
             (cfg, ss.clone())
         }),
     )
@@ -158,31 +157,30 @@ async fn ws_handler(
 }
 
 /// WebSockets service factory
-async fn ws_service(
-    (sink, ss): (ws::WsSink, SessionLite),
+async fn websocket_service(
+    (sink, ss): (ws::WsSink, ConnLite),
 ) -> Result<impl Service<ws::Frame, Response = Option<ws::Message>, Error = io::Error>, web::Error>
 {
-    let session = session::Session::new(ss.uid, ss.did, ss.ip, ss.dt, ss.hub, ss.pilot, ss.ix);
-    let session_sender = session.start(sink.clone());
+    let conn = conn::Conn::new(ss.uid, ss.did, ss.ip, ss.dt, ss.hub, ss.pilot, ss.ix);
+    let conn_sender = conn.start(sink.clone());
 
     // handler service for incoming websockets frames
-    let session_sender2 = session_sender.clone();
+    let conn_sender2 = conn_sender.clone();
     Ok(fn_service(move |frame| {
-        let sender = session_sender2.clone();
+        let sender = conn_sender2.clone();
         rt::spawn(async move {
             sender
-                .send_master_msg(session_proto::Master2SessionMsg::Frame(frame))
+                .send_master_msg(conn_proto::Master2ConnMsg::Frame(frame))
                 .await
-                .unwrap_or_else(|e| error!("failed to send msg to session: {} - {} ", sender.id,  e.to_string()));
+                .unwrap_or_else(|e| error!("failed to send msg to conn: {} - {} ", sender.id,  e.to_string()));
         });
 
         ready(Ok(None))
     })
     .on_shutdown(move || {
         rt::spawn(async move {
-            // let mut session_sender = session_sender.clone();
-            session_sender
-                .send_master_msg(session_proto::Master2SessionMsg::Shutdown)
+            conn_sender
+                .send_master_msg(conn_proto::Master2ConnMsg::Shutdown)
                 .await.unwrap_or(());
         });
     }))

@@ -56,10 +56,9 @@ impl CMsgType {
     }
 }
 
-// msg session -> client
 #[derive(Serialize, Default)]
 #[serde(default)]
-pub struct Session2ClientMsg {
+pub struct Conn2ClientMsg {
     pub id: String,
     #[serde(rename = "t")]
     pub typ: CMsgType,
@@ -70,80 +69,80 @@ pub struct Session2ClientMsg {
     pub data: Option<Box<RawValue>>,
 }
 
-pub enum SessionMsg {
-    FromMaster(Master2SessionMsg),
-    FromHub(Hub2SessionMsg),
-    FromTimer(Timer2SessionMsg),
+pub enum ConnMsg {
+    FromMaster(Master2ConnMsg),
+    FromHub(Hub2ConnMsg),
+    FromTimer(Timer2ConnMsg),
 }
 
 #[derive(Debug)]
-pub enum Master2SessionMsg {
+pub enum Master2ConnMsg {
     Frame(Frame),
     Shutdown,
 }
 
 #[derive(Clone)]
-pub struct SessionSender {
+pub struct ConnSender {
     pub id: String,
-    sender: mpsc::Sender<SessionMsg>,
+    sender: mpsc::Sender<ConnMsg>,
 }
 
-impl fmt::Display for SessionSender {
+impl fmt::Display for ConnSender {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "session-sender, id: {}", self.id,)
+        write!(f, "conn-sender, id: {}", self.id,)
     }
 }
 
-impl SessionSender {
-    async fn send(&self, msg: SessionMsg) -> SendResult {
+impl ConnSender {
+    async fn send(&self, msg: ConnMsg) -> SendResult {
         self.sender.clone().send(msg).await
     }
 
-    pub async fn send_master_msg(&self, msg: Master2SessionMsg) -> SendResult {
-        self.send(SessionMsg::FromMaster(msg)).await
+    pub async fn send_master_msg(&self, msg: Master2ConnMsg) -> SendResult {
+        self.send(ConnMsg::FromMaster(msg)).await
     }
 
-    pub async fn send_hub_msg(&self, msg: Hub2SessionMsg) -> SendResult {
-        self.send(SessionMsg::FromHub(msg)).await
+    pub async fn send_hub_msg(&self, msg: Hub2ConnMsg) -> SendResult {
+        self.send(ConnMsg::FromHub(msg)).await
     }
 
-    pub async fn send_timer_msg(&self, msg: Timer2SessionMsg) -> SendResult {
-        self.send(SessionMsg::FromTimer(msg)).await
+    pub async fn send_timer_msg(&self, msg: Timer2ConnMsg) -> SendResult {
+        self.send(ConnMsg::FromTimer(msg)).await
     }
 }
 
-pub struct SessionReceiver {
+pub struct ConnReceiver {
     id: String,
-    receiver: mpsc::Receiver<SessionMsg>,
+    receiver: mpsc::Receiver<ConnMsg>,
 }
 
-impl SessionReceiver {
-    pub async fn next(&mut self) -> Option<SessionMsg> {
+impl ConnReceiver {
+    pub async fn next(&mut self) -> Option<ConnMsg> {
         self.receiver.next().await
     }
 }
 
-impl fmt::Display for SessionReceiver {
+impl fmt::Display for ConnReceiver {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "session-receiver, id: {}", self.id,)
+        write!(f, "conn-receiver, id: {}", self.id,)
     }
 }
 
-pub fn new_session_channel(id: &str, buffer: usize) -> (SessionSender, SessionReceiver) {
+pub fn new_conn_channel(id: &str, buffer: usize) -> (ConnSender, ConnReceiver) {
     let (tx, rx) = mpsc::channel(buffer);
     (
-        SessionSender {
+        ConnSender {
             sender: tx,
             id: id.to_string(),
         },
-        SessionReceiver {
+        ConnReceiver {
             receiver: rx,
             id: id.to_string(),
         },
     )
 }
 
-// msg client -> session
+// msg client -> conn
 #[derive(Deserialize, Serialize, Default)]
 #[serde(default)]
 pub struct ClientMsg {
@@ -211,22 +210,19 @@ impl fmt::Display for ClientMsg {
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct SessionInitMsgData {
-    pub session_id: Option<String>,
-    pub content_encoding: String,
+pub struct ConnInitMsgData {
     pub accept_encoding: String,
     pub ping_interval: u32,
-    pub code: Option<String>,
 }
 
 // msg recv from Hub
 #[derive(Clone, Debug)]
-pub enum Hub2SessionMsg {
+pub enum Hub2ConnMsg {
     QUIT,
     BIZ(Bytes),
 }
 
 #[derive(Debug, Clone)]
-pub enum Timer2SessionMsg {
+pub enum Timer2ConnMsg {
     HearBeatCheck,
 }

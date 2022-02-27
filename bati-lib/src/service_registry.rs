@@ -1,10 +1,10 @@
-use crate::channel::{ChannelConf, KafkaConf};
+use crate::service::{ServiceConf, KafkaConf};
 use log::debug;
 use serde::Deserialize;
 use serde_json;
 use std::fs;
 
-pub struct ChannelRegistryConf {
+pub struct ServcieRegistryConf {
     pub file: Option<String>,
     pub consul: Option<ConsulConf>,
 }
@@ -14,18 +14,18 @@ pub struct ConsulConf {
     pub channel_path: String,
 }
 
-pub struct ChannelRegistry {
+pub struct ServiceRegistry {
     cconf: Option<Cconfer>,
     fconf: Option<String>,
 }
 
-impl ChannelRegistry {
-    pub fn new(conf: ChannelRegistryConf) -> Self {
+impl ServiceRegistry {
+    pub fn new(conf: ServcieRegistryConf) -> Self {
         if conf.file.is_none() && conf.consul.is_none() {
             panic!("channel registry conf abnormal, file & consul empty");
         }
 
-        let mut r = ChannelRegistry {
+        let mut r = ServiceRegistry {
             fconf: conf.file,
             cconf: None,
         };
@@ -35,10 +35,10 @@ impl ChannelRegistry {
         r
     }
 
-    pub async fn get_all_channels(&self) -> Result<Vec<ChannelConf>, String> {
+    pub async fn get_all_services(&self) -> Result<Vec<ServiceConf>, String> {
         if let Some(c) = &self.cconf {
             let chans = c.get_path_keys("").await?;
-            let mut confs: Vec<ChannelConf> = vec![];
+            let mut confs: Vec<ServiceConf> = vec![];
             for chan in chans {
                 let conf = self.get_consul_channel_conf(&chan).await?;
                 confs.push(conf);
@@ -48,7 +48,7 @@ impl ChannelRegistry {
 
         match fs::read_to_string(self.fconf.as_ref().unwrap()) {
             Ok(s) => {
-                let confs: serde_json::Result<Vec<ChannelConf>> = serde_json::from_str(&s);
+                let confs: serde_json::Result<Vec<ServiceConf>> = serde_json::from_str(&s);
                 if confs.is_err() {
                     return Err(confs.err().unwrap().to_string());
                 }
@@ -58,7 +58,7 @@ impl ChannelRegistry {
         }
     }
 
-    async fn get_consul_channel_conf(&self, channel: &str) -> Result<ChannelConf, String> {
+    async fn get_consul_channel_conf(&self, channel: &str) -> Result<ServiceConf, String> {
         let data = self.cconf.as_ref().unwrap().get_data(&channel).await?;
         debug!("get channel conf, {} - {}", channel, data);
         let ini_conf = ini::Ini::load_from_str(&data);
@@ -68,7 +68,7 @@ impl ChannelRegistry {
         let ini_conf = ini_conf.unwrap();
         let main_section = ini_conf.general_section();
 
-        let mut conf = ChannelConf::new(channel.to_string());
+        let mut conf = ServiceConf::new(channel.to_string());
         conf.enable_close_notify = Self::get_boolean_form_property(main_section, "quit_notify")?;
         conf.enable_multi_rooms = Self::get_boolean_form_property(main_section, "multi_rooms")?;
         if ini_conf.section(Some("kafka")).is_some() {

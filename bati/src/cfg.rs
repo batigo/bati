@@ -5,7 +5,7 @@ use std::fs;
 #[derive(Deserialize, Clone)]
 pub struct Cfg {
     pub server: ServerCfg,
-    pub channel_registry: ChannelRegistryCfg,
+    pub channel_registry: ServiceRegistryCfg,
     pub log: LogCfg,
 }
 
@@ -15,7 +15,7 @@ pub struct ServerCfg {
 }
 
 #[derive(Deserialize, Clone)]
-pub struct ChannelRegistryCfg {
+pub struct ServiceRegistryCfg {
     pub consul: Option<ConsulCfg>,
     pub file: Option<String>,
 }

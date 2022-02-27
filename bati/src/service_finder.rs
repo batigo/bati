@@ -1,19 +1,19 @@
-use crate::cfg::ChannelRegistryCfg;
+use crate::cfg::ServiceRegistryCfg;
 use crate::pilot_proto::PilotSender;
-use bati_lib::{self as lib, ChannelRegistry, ChannelRegistryConf};
+use bati_lib::{self as lib, ServiceRegistry, ServcieRegistryConf};
 use log::error;
 use ntex::{rt, time};
 
 // ChanFinder负责监听channel配置启动对应的postman
-pub struct ChanFinder {
+pub struct ServiceFinder {
     pilots: Vec<PilotSender>,
-    chan_registry: ChannelRegistryCfg,
+    service_registry: ServiceRegistryCfg,
 }
 
-impl ChanFinder {
-    pub fn new(chan_registry: ChannelRegistryCfg) -> Self {
-        ChanFinder {
-            chan_registry,
+impl ServiceFinder {
+    pub fn new(chan_registry: ServiceRegistryCfg) -> Self {
+        ServiceFinder {
+            service_registry: chan_registry,
             pilots: vec![],
         }
     }
@@ -23,17 +23,17 @@ impl ChanFinder {
     }
 
     pub fn start(&self, pilots: Vec<PilotSender>) {
-        let mut cfg = ChannelRegistryConf {
-            file: self.chan_registry.file.clone(),
+        let mut cfg = ServcieRegistryConf {
+            file: self.service_registry.file.clone(),
             consul: None,
         };
-        if let Some(v) = self.chan_registry.consul.clone() {
+        if let Some(v) = self.service_registry.consul.clone() {
             cfg.consul = Some(lib::ConsulConf {
                 addr: v.addr,
                 channel_path: v.channel_conf_path,
             });
         }
-        let chan_reg = ChannelRegistry::new(cfg);
+        let service_reg = ServiceRegistry::new(cfg);
 
         rt::Arbiter::new().exec_fn(move || {
             let mut s = time::Millis(10);
@@ -43,7 +43,7 @@ impl ChanFinder {
                     if s < time::Millis(5000) {
                         s = time::Millis(5000)
                     }
-                    let channels = chan_reg.get_all_channels().await;
+                    let channels = service_reg.get_all_services().await;
                     if channels.is_err() {
                         error!("failed to get all channels: {}", channels.err().unwrap());
                         continue;
@@ -55,7 +55,7 @@ impl ChanFinder {
                         for mut pilot in pilots {
                             for conf in chan_confs.iter() {
                                 pilot
-                                    .send_chanfinder_msg(conf.clone())
+                                    .send_servicefinder_msg(conf.clone())
                                     .await
                                     .unwrap_or_else(|e| {
                                         error!("failed to send channel conf message: {}", e);

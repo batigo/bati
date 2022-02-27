@@ -1,6 +1,6 @@
 use crate::hub_proto::*;
 use crate::metric_proto::*;
-use crate::session_proto::*;
+use crate::conn_proto::*;
 use log::warn;
 use ntex::{rt, time};
 
@@ -27,11 +27,11 @@ pub fn start_hub_stat_cron(mut sender: HubSender) {
     });
 }
 
-pub fn start_session_hearbeat_cron(sender: SessionSender) {
+pub fn start_session_hearbeat_cron(sender: ConnSender) {
     rt::spawn(async move {
         loop {
             time::sleep(time::Millis(90_000)).await;
-            if let Err(e) = sender.send_timer_msg(Timer2SessionMsg::HearBeatCheck).await {
+            if let Err(e) = sender.send_timer_msg(Timer2ConnMsg::HearBeatCheck).await {
                 warn!(
                     "failed to send session timer msg: {} - {}",
                     sender.id,

@@ -2,29 +2,29 @@ use crate::{gen_msg_id, get_now_milli};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-pub type ChannelMsgType = u8;
+pub type ServiceMsgType = u8;
 
-pub const CHAN_MSG_TYPE_SESSION: ChannelMsgType = 1;
-pub const CHAN_MSG_TYPE_CHANNEL: ChannelMsgType = 2;
-pub const CHAN_MSG_TYPE_BROADCAST: ChannelMsgType = 3;
-pub const CHAN_MSG_TYPE_ROOM_USERS: ChannelMsgType = 10;
-pub const CHAN_MSG_TYPE_REG_CHANNEL: ChannelMsgType = 4;
-pub const CHAN_MSG_TYPE_UNREG_ROOM: ChannelMsgType = 5;
-pub const CHAN_MSG_TYPE_UNREG_CHANNEL: ChannelMsgType = 6;
-pub const CHAN_MSG_TYPE_CLIENT_QUIT: ChannelMsgType = 7;
-pub const CHAN_MSG_TYPE_CLIENT_JOIN: ChannelMsgType = 8;
+pub const CHAN_MSG_TYPE_CONN: ServiceMsgType = 1;
+pub const CHAN_MSG_TYPE_SERVICE: ServiceMsgType = 2;
+pub const CHAN_MSG_TYPE_BROADCAST: ServiceMsgType = 3;
+pub const CHAN_MSG_TYPE_ROOM_USERS: ServiceMsgType = 4;
+pub const CHAN_MSG_TYPE_REG_CHANNEL: ServiceMsgType = 5;
+pub const CHAN_MSG_TYPE_UNREG_ROOM: ServiceMsgType = 6;
+pub const CHAN_MSG_TYPE_UNREG_CHANNEL: ServiceMsgType = 7;
+pub const CHAN_MSG_TYPE_CONN_QUIT: ServiceMsgType = 8;
+pub const CHAN_MSG_TYPE_CONN_JOIN: ServiceMsgType = 9;
 
 #[derive(Serialize, Deserialize, Default, Clone, Debug)]
 #[serde(default)]
-pub struct ChannelMsg {
+pub struct ServiceMsg {
     pub id: String,
     #[serde(rename = "t")]
-    pub typ: ChannelMsgType,
+    pub typ: ServiceMsgType,
     #[serde(rename = "d")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Box<serde_json::value::RawValue>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sid: Option<String>,
+    pub cid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -32,21 +32,21 @@ pub struct ChannelMsg {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub uids: Option<Vec<u64>>,
     #[serde(rename = "cid", skip_serializing_if = "Option::is_none")]
-    pub channel: Option<String>,
+    pub service: Option<String>,
     #[serde(rename = "rid", skip_serializing_if = "Option::is_none")]
     pub room: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub broadcast_rate: Option<i8>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub exclude_mids: Option<Vec<String>>,
+    pub exclude_uids: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_mids: Option<Vec<String>>,
+    pub include_uids: Option<Vec<String>>,
     pub ts: u64,
 }
 
-impl ChannelMsg {
+impl ServiceMsg {
     pub fn new() -> Self {
-        ChannelMsg {
+        ServiceMsg {
             id: gen_msg_id(),
             ts: get_now_milli(),
             ..Default::default()
@@ -54,23 +54,23 @@ impl ChannelMsg {
     }
 }
 
-impl fmt::Display for ChannelMsg {
+impl fmt::Display for ServiceMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "id: {}, type: {}, sid: {:?}, mid: {:?}, ip: {:?}, mids: {:?}, cid: {:?}, rid: {:?}, \
+            "id: {}, type: {}, cid: {:?}, uid: {:?}, ip: {:?}, uids: {:?}, cid: {:?}, rid: {:?}, \
             broadcast_rate: {:?}, exclude_mids: {:?}, include_mids: {:?}, ts:{:?}, data: {:?}",
             self.id,
             self.typ,
-            self.sid,
+            self.cid,
             self.uid,
             self.ip,
             self.uids,
-            self.channel,
+            self.service,
             self.room,
             self.broadcast_rate,
-            self.exclude_mids,
-            self.include_mids,
+            self.exclude_uids,
+            self.include_uids,
             self.ts,
             self.data
         )
@@ -79,6 +79,6 @@ impl fmt::Display for ChannelMsg {
 
 #[derive(Serialize, Deserialize, Default)]
 #[serde(default)]
-pub struct ChannelData {
+pub struct ServiceData {
     pub rids: Vec<String>,
 }

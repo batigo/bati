@@ -8,5 +8,5 @@ log:
     roll_size: 50mb
 
 channel_registry:
-    file: "bati/conf/channels.json"
+    file: "bati/conf/services.json"
 

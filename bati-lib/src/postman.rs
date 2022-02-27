@@ -1,5 +1,5 @@
 use crate::kafka::KafkaPostman;
-use crate::{ChannelConf, PostmanMsg};
+use crate::{ServiceConf, PostmanMsg};
 use futures::channel::mpsc::{Receiver, Sender};
 use std::error::Error;
 
@@ -10,7 +10,7 @@ pub struct Postman {
 
 impl Postman {
     pub fn new_upper(
-        conf: ChannelConf,
+        conf: ServiceConf,
         sender: Sender<PostmanMsg>,
         receiver: Receiver<PostmanMsg>,
     ) -> Result<Self, Box<dyn Error>> {
@@ -18,7 +18,7 @@ impl Postman {
     }
 
     pub fn new_downer(
-        conf: ChannelConf,
+        conf: ServiceConf,
         sender: Sender<PostmanMsg>,
         receiver: Receiver<PostmanMsg>,
     ) -> Result<Self, Box<dyn Error>> {
@@ -27,7 +27,7 @@ impl Postman {
 
     pub fn new(
         typ: PostmanType,
-        conf: ChannelConf,
+        conf: ServiceConf,
         sender: Sender<PostmanMsg>,
         receiver: Receiver<PostmanMsg>,
     ) -> Result<Self, Box<dyn Error>> {

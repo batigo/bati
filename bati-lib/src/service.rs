@@ -2,16 +2,16 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Debug, Default, Deserialize)]
 #[serde(default)]
-pub struct ChannelConf {
+pub struct ServiceConf {
     pub name: String,
     pub enable_close_notify: bool,
     pub enable_multi_rooms: bool,
     pub kafka: Option<KafkaConf>,
 }
 
-impl ChannelConf {
+impl ServiceConf {
     pub fn new(channel: String) -> Self {
-        ChannelConf {
+        ServiceConf {
             name: channel,
             enable_close_notify: false,
             enable_multi_rooms: false,
@@ -20,7 +20,7 @@ impl ChannelConf {
     }
 }
 
-impl std::fmt::Display for ChannelConf {
+impl std::fmt::Display for ServiceConf {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = serde_json::to_string(self).unwrap();
         write!(f, "{}", s)
