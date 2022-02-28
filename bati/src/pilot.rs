@@ -69,7 +69,7 @@ impl Pilot {
         match msg {
             PilotMessage::FromConn(msg) => {
                 debug!("recv PilotMessage::FromConn msg: {:?}", msg);
-                let Conn2PilotMsg { channel, data } = msg;
+                let  PilotServiceBizMsg{ service: channel, data } = msg;
                 self.send_postman_msg(
                     channel,
                     lib::PostmanMsg {
@@ -83,8 +83,8 @@ impl Pilot {
             PilotMessage::FromHub(msg) => {
                 debug!("recv PilotMessage::FromHub: {:?}", msg);
                 match msg {
-                    Hub2PilotMsg::ChannelMsg(msg) => {
-                        let PilotChannelMsg { channel, data } = msg;
+                    Hub2PilotMsg::BizMsg(msg) => {
+                        let PilotServiceBizMsg { service: channel, data } = msg;
                         self.send_postman_msg(
                             channel,
                             lib::PostmanMsg {
@@ -109,7 +109,7 @@ impl Pilot {
                 self.hubs[msg.ix] = Some(msg.hub);
             }
 
-            PilotMessage::FromChanFinder(conf) => {
+            PilotMessage::FromServiceFinder(conf) => {
                 if self.postmen.get(&conf.name).is_some() {
                     return;
                 }
@@ -215,7 +215,7 @@ impl Pilot {
                     | CHAN_MSG_TYPE_SERVICE
                     | CHAN_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
                     _ => {
-                        warn!("bad channel msg type: {}", msg.typ);
+                        warn!("bad service msg type: {}", msg.typ);
                     }
                 }
             }
@@ -268,7 +268,7 @@ impl Pilot {
     }
 
     async fn handle_join_service_msg(&self, msg: &mut ServiceMsg) {
-        debug!("handle join channel msg: {:?}", msg);
+        debug!("handle join service msg: {:?}", msg);
         if msg.service.is_none() || msg.cid.is_none() || msg.data.is_none() {
             return;
         }
@@ -331,11 +331,11 @@ impl Pilot {
         };
 
         let mut biz_msg = HubServiceBizMsg::default();
-        let mut cmsg = Conn2ClientMsg {
+        let mut cmsg = ClientMsg {
             id: msg.id.clone(),
-            typ: CMsgType(CMSG_TYPE_BIZ),
+            typ: ClientMsgType(CMSG_TYPE_BIZ),
             ack: 0,
-            channel_id: msg.service.take(),
+            service_id: msg.service.take(),
             data: msg.data.take(),
         };
         let data = serde_json::to_vec(&cmsg);
@@ -359,7 +359,7 @@ impl Pilot {
             CHAN_MSG_TYPE_CONN => {
                 biz_msg.typ = ServiceBizMsgType::Conn;
                 biz_msg.cid = msg.cid.take();
-                biz_msg.service = cmsg.channel_id.take();
+                biz_msg.service = cmsg.service_id.take();
                 if biz_msg.cid.is_none() {
                     warn!("conn not found for conn-bizmsg: {}", msg.id);
                     return;
@@ -367,7 +367,7 @@ impl Pilot {
             }
             CHAN_MSG_TYPE_SERVICE => {
                 biz_msg.typ = ServiceBizMsgType::Service;
-                biz_msg.service = cmsg.channel_id.take();
+                biz_msg.service = cmsg.service_id.take();
                 if biz_msg.service.is_none() {
                     return;
                 }
@@ -384,7 +384,7 @@ impl Pilot {
             }
             CHAN_MSG_TYPE_ROOM_USERS => {
                 biz_msg.typ = ServiceBizMsgType::Room;
-                biz_msg.service = cmsg.channel_id.take();
+                biz_msg.service = cmsg.service_id.take();
                 biz_msg.room = msg.room.take();
                 biz_msg.uids = msg.uids.take();
                 if biz_msg.service.is_none()

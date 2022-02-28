@@ -1,6 +1,6 @@
 use bati_lib as lib;
 
-pub fn gen_session_id(did: &str, uid: &str, worker_index: usize) -> String {
+pub fn gen_conn_id(did: &str, uid: &str, worker_index: usize) -> String {
     let s = format!("{}_{}_{}", did, uid, lib::get_now_milli());
     let id: String = format!("{:x}", md5::compute(s));
     format!("{}_{}", id, worker_index)

@@ -30,7 +30,7 @@ impl ServiceFinder {
         if let Some(v) = self.service_registry.consul.clone() {
             cfg.consul = Some(lib::ConsulConf {
                 addr: v.addr,
-                channel_path: v.channel_conf_path,
+                channel_path: v.service_conf_path,
             });
         }
         let service_reg = ServiceRegistry::new(cfg);

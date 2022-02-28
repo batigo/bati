@@ -6,10 +6,10 @@ use bati_lib::{ServiceConf, PostmanMsg};
 type SendResult = Result<(), mpsc::SendError>;
 
 pub enum PilotMessage {
-    FromConn(Conn2PilotMsg),
+    FromConn(PilotServiceBizMsg),
     FromHub(Hub2PilotMsg),
     FromMaster(PilotAddHubMsg),
-    FromChanFinder(ServiceConf),
+    FromServiceFinder(ServiceConf),
     FromPostman(PostmanMsg),
 }
 
@@ -21,7 +21,7 @@ impl PilotSender {
         self.0.send(msg).await
     }
 
-    pub async fn send_conn_msg(&mut self, msg: Conn2PilotMsg) -> SendResult {
+    pub async fn send_conn_msg(&mut self, msg: PilotServiceBizMsg) -> SendResult {
         self.send(PilotMessage::FromConn(msg)).await
     }
 
@@ -34,7 +34,7 @@ impl PilotSender {
     }
 
     pub async fn send_servicefinder_msg(&mut self, msg: ServiceConf) -> SendResult {
-        self.send(PilotMessage::FromChanFinder(msg)).await
+        self.send(PilotMessage::FromServiceFinder(msg)).await
     }
 
     pub async fn send_postman_msg(&mut self, msg: PostmanMsg) -> SendResult {
@@ -64,14 +64,13 @@ pub struct PilotAddHubMsg {
 
 #[derive(Clone, Debug)]
 pub enum Hub2PilotMsg {
-    ChannelMsg(PilotChannelMsg),
+    BizMsg(PilotServiceBizMsg),
     EncodingMsg(&'static str),
 }
 
-pub type Conn2PilotMsg = PilotChannelMsg;
 
 #[derive(Debug, Clone)]
-pub struct PilotChannelMsg {
-    pub channel: String,
+pub struct PilotServiceBizMsg {
+    pub service: String,
     pub data: bytes::Bytes,
 }

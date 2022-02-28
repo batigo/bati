@@ -141,7 +141,7 @@ async fn run_consumer(
                 Some(bs) => {
                     let msg = PostmanMsg {
                         data: bytes::Bytes::from(bs.to_owned().to_vec()),
-                        channel: Some(channel.clone()),
+                        service: Some(channel.clone()),
                     };
                     sender.send(msg).await.unwrap_or_else(|e| {
                         error!("failed to send PostmanMsg to : {}", e);

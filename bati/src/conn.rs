@@ -43,7 +43,7 @@ impl Conn {
         pilot: PilotSender,
         worker_index: usize,
     ) -> Conn {
-        let id = gen_session_id(&did, &uid, worker_index);
+        let id = gen_conn_id(&did, &uid, worker_index);
         let (msg_sender, msg_receiver) = new_conn_channel(&id, 32);
 
         Conn {
@@ -64,26 +64,26 @@ impl Conn {
     }
 
     pub fn start(self, ws_sink: WsSink) -> ConnSender {
-        use crate::timer::start_session_hearbeat_cron;
-        let session_sender = self.msg_sender.clone();
+        use crate::timer::start_conn_hearbeat_cron;
+        let conn_sender = self.msg_sender.clone();
         rt::spawn(async move {
-            let mut session = self;
-            session.ws_sink = Some(ws_sink);
+            let mut conn = self;
+            conn.ws_sink = Some(ws_sink);
             loop {
-                let msg = session.msg_receiver.next().await;
+                let msg = conn.msg_receiver.next().await;
                 if msg.is_none() {
-                    session.quit().await;
+                    conn.quit().await;
                     return;
                 }
-                if !session.handle_message(msg.unwrap()).await {
-                    session.quit().await;
+                if !conn.handle_message(msg.unwrap()).await {
+                    conn.quit().await;
                     return;
                 }
             }
         });
 
-        start_session_hearbeat_cron(session_sender.clone());
-        session_sender
+        start_conn_hearbeat_cron(conn_sender.clone());
+        conn_sender
     }
 
     async fn handle_message(&mut self, msg: ConnMsg) -> bool {
@@ -280,9 +280,9 @@ impl Conn {
         let data = RawValue::from_string(data).unwrap();
         let rmsg = ClientMsg {
             id: lib::gen_msg_id(),
-            typ: CMsgType(CMSG_TYPE_INIT_RESP),
+            typ: ClientMsgType(CMSG_TYPE_INIT_RESP),
             ack: 1,
-            channel_id: None,
+            service_id: None,
             data: Some(data),
         };
         match self.send_cmsg(&rmsg).await {
@@ -308,8 +308,8 @@ impl Conn {
         match serde_json::to_vec(&channel_msg) {
             Ok(bs) => {
                 self.pilot
-                    .send_conn_msg(Conn2PilotMsg {
-                        channel: msg.channel_id.take().unwrap(),
+                    .send_conn_msg( PilotServiceBizMsg {
+                        service: msg.service_id.take().unwrap(),
                         data: bytes::Bytes::from(bs),
                     })
                     .await

@@ -7,6 +7,6 @@ log:
     file: bati/conf/bati.log
     roll_size: 50mb
 
-channel_registry:
+service_registry:
     file: "bati/conf/services.json"
 

@@ -44,7 +44,7 @@ async fn main() {
     init_logger(config.log.clone());
 
     let cpus = num_cpus::get();
-    let mut chan_finder = service_finder::ServiceFinder::new(config.channel_registry.clone());
+    let mut chan_finder = service_finder::ServiceFinder::new(config.service_registry.clone());
 
     let metrics_collecor = metric::MetricCollector::new(cpus).start();
 

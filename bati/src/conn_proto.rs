@@ -8,27 +8,22 @@ use serde::{Deserialize, Serialize};
 use serde_json::value::RawValue;
 use std::fmt;
 
-// 长连接初始化消息
 pub const CMSG_TYPE_INIT: u8 = 1;
-// 长连接初始化消息响应
 pub const CMSG_TYPE_INIT_RESP: u8 = 2;
-// 业务消息
 pub const CMSG_TYPE_BIZ: u8 = 3;
-// ack消息
 pub const CMSG_TYPE_ACK: u8 = 4;
-// echo消息，用于测试
 pub const CMSG_TYPE_ECHO: u8 = 102;
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
-pub struct CMsgType(pub u8);
+pub struct ClientMsgType(pub u8);
 
-impl fmt::Display for CMsgType {
+impl fmt::Display for ClientMsgType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.str())
     }
 }
 
-impl CMsgType {
+impl ClientMsgType {
     pub fn str(&self) -> &'static str {
         match self.0 {
             CMSG_TYPE_INIT => "init",
@@ -54,19 +49,6 @@ impl CMsgType {
     fn datamust(&self) -> bool {
         matches!(self.0, CMSG_TYPE_INIT | CMSG_TYPE_BIZ)
     }
-}
-
-#[derive(Serialize, Default)]
-#[serde(default)]
-pub struct Conn2ClientMsg {
-    pub id: String,
-    #[serde(rename = "t")]
-    pub typ: CMsgType,
-    pub ack: u8,
-    #[serde(rename = "cid", skip_serializing_if = "Option::is_none")]
-    pub channel_id: Option<String>,
-    #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
-    pub data: Option<Box<RawValue>>,
 }
 
 pub enum ConnMsg {
@@ -148,13 +130,14 @@ pub fn new_conn_channel(id: &str, buffer: usize) -> (ConnSender, ConnReceiver) {
 pub struct ClientMsg {
     pub id: String,
     #[serde(rename = "t")]
-    pub typ: CMsgType,
+    pub typ: ClientMsgType,
     pub ack: u8,
-    #[serde(rename = "cid", skip_serializing_if = "Option::is_none")]
-    pub channel_id: Option<String>,
+    #[serde(rename = "sid", skip_serializing_if = "Option::is_none")]
+    pub service_id: Option<String>,
     #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
     pub data: Option<Box<RawValue>>,
 }
+
 
 impl ClientMsg {
     pub fn validate(&self) -> Result<(), &'static str> {
@@ -166,7 +149,7 @@ impl ClientMsg {
             return Err("msg data misss");
         }
 
-        if self.typ.is_type(CMSG_TYPE_BIZ) && self.channel_id.is_none() {
+        if self.typ.is_type(CMSG_TYPE_BIZ) && self.service_id.is_none() {
             return Err("empty cid for bizmsg");
         }
 
@@ -192,7 +175,7 @@ impl ClientMsg {
     pub fn new_ack_msg(id: &str) -> Self {
         ClientMsg {
             id: id.to_string(),
-            typ: CMsgType(CMSG_TYPE_ACK),
+            typ: ClientMsgType(CMSG_TYPE_ACK),
             ..Default::default()
         }
     }
@@ -203,7 +186,7 @@ impl fmt::Display for ClientMsg {
         write!(
             f,
             "id: {}, t: {}, ack: {}, cid: {:?}",
-            self.id, self.typ, self.ack, self.channel_id
+            self.id, self.typ, self.ack, self.service_id
         )
     }
 }

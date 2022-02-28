@@ -27,13 +27,13 @@ pub fn start_hub_stat_cron(mut sender: HubSender) {
     });
 }
 
-pub fn start_session_hearbeat_cron(sender: ConnSender) {
+pub fn start_conn_hearbeat_cron(sender: ConnSender) {
     rt::spawn(async move {
         loop {
             time::sleep(time::Millis(90_000)).await;
             if let Err(e) = sender.send_timer_msg(Timer2ConnMsg::HearBeatCheck).await {
                 warn!(
-                    "failed to send session timer msg: {} - {}",
+                    "failed to send conn timer msg: {} - {}",
                     sender.id,
                     e.to_string()
                 );

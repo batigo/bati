@@ -8,9 +8,9 @@ pub const CHAN_MSG_TYPE_CONN: ServiceMsgType = 1;
 pub const CHAN_MSG_TYPE_SERVICE: ServiceMsgType = 2;
 pub const CHAN_MSG_TYPE_BROADCAST: ServiceMsgType = 3;
 pub const CHAN_MSG_TYPE_ROOM_USERS: ServiceMsgType = 4;
-pub const CHAN_MSG_TYPE_REG_CHANNEL: ServiceMsgType = 5;
+pub const CHAN_MSG_TYPE_REG_SERVICE: ServiceMsgType = 5;
 pub const CHAN_MSG_TYPE_UNREG_ROOM: ServiceMsgType = 6;
-pub const CHAN_MSG_TYPE_UNREG_CHANNEL: ServiceMsgType = 7;
+pub const CHAN_MSG_TYPE_UNREG_SERVICE: ServiceMsgType = 7;
 pub const CHAN_MSG_TYPE_CONN_QUIT: ServiceMsgType = 8;
 pub const CHAN_MSG_TYPE_CONN_JOIN: ServiceMsgType = 9;
 

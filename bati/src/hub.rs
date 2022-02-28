@@ -418,8 +418,8 @@ impl Hub {
                     service, service_msg
                 );
                 self.pilot
-                    .send_hub_msg(Hub2PilotMsg::ChannelMsg(PilotChannelMsg {
-                        channel: service,
+                    .send_hub_msg(Hub2PilotMsg::BizMsg(PilotServiceBizMsg {
+                        service: service,
                         data: bytes::Bytes::from(serde_json::to_vec(&service_msg).unwrap()),
                     }))
                     .await

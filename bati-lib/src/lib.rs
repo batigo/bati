@@ -18,7 +18,7 @@ pub fn gen_msg_id() -> String {
 #[derive(Clone, Debug)]
 pub struct PostmanMsg {
     pub data: bytes::Bytes,
-    pub channel: Option<String>,
+    pub service: Option<String>,
 }
 
 pub fn get_now_milli() -> u64 {
