@@ -51,9 +51,9 @@ pub enum HubMessage {
 #[derive(Clone, Debug)]
 pub enum Pilot2HubMsg {
     Biz(HubServiceBizMsg),
-    JoinChannel(HubJoinServiceMsg),
+    JoinService(HubJoinServiceMsg),
     LeaveRoom(HubLeaveRoomMsg),
-    ChannelConf(lib::ServiceConf),
+    ServiceConf(lib::ServiceConf),
 }
 
 #[derive(Clone, Default, Debug)]
@@ -74,7 +74,7 @@ pub struct HubServiceBizMsg {
 pub enum ServiceBizMsgType {
     Conn,
     Room,
-    Channel,
+    Service,
     Broadcast,
 }
 
@@ -145,8 +145,8 @@ impl ServiceBizData {
 
 #[derive(Clone, Debug)]
 pub struct HubJoinServiceMsg {
-    pub sid: String,
-    pub channel: String,
+    pub cid: String,
+    pub service: String,
     pub rooms: Vec<String>,
     pub multi_rooms: bool,
 }
@@ -155,8 +155,8 @@ impl fmt::Display for HubJoinServiceMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "HubJoinChannelMsg: sid:{:?}, channel:{}, rooms{:?}, multi_rooms:{}",
-            self.sid, self.channel, self.rooms, self.multi_rooms
+            "HubJoinServiceMsg: cid:{:?}, service:{}, rooms{:?}, multi_rooms:{}",
+            self.cid, self.service, self.rooms, self.multi_rooms
         )
     }
 }
@@ -164,8 +164,8 @@ impl fmt::Display for HubJoinServiceMsg {
 #[derive(Clone, Debug)]
 pub struct HubLeaveRoomMsg {
     pub uid: Option<String>,
-    pub sid: Option<String>,
-    pub channel: String,
+    pub cid: Option<String>,
+    pub service: String,
     pub room: String,
 }
 
@@ -173,8 +173,8 @@ impl fmt::Display for HubLeaveRoomMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "HubLeaveRoomMsg: sid:{:?}, uid:{:?}, channel:{}, room{}",
-            self.sid, self.uid, self.channel, self.room
+            "HubLeaveRoomMsg: sid:{:?}, uid:{:?}, service:{}, room{}",
+            self.cid, self.uid, self.service, self.room
         )
     }
 }

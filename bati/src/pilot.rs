@@ -15,7 +15,7 @@ use bati_lib::service_msg::*;
 use bati_lib::{get_now_milli, ServiceConf, ServiceData, ServiceMsg, Postman};
 
 #[derive(Clone)]
-struct ChannelPostman {
+struct ServicePostman {
     conf: ServiceConf,
     msg_sender: Sender<lib::PostmanMsg>,
 }
@@ -23,7 +23,7 @@ struct ChannelPostman {
 pub struct Pilot {
     ix: usize,
     hubs: Vec<Option<HubSender>>,
-    postmen: HashMap<String, ChannelPostman>,
+    postmen: HashMap<String, ServicePostman>,
     encoders: Vec<Encoder>,
     msg_sender: PilotSender,
     msg_receiver: PilotReceiver,
@@ -74,7 +74,7 @@ impl Pilot {
                     channel,
                     lib::PostmanMsg {
                         data,
-                        channel: None,
+                        service: None,
                     },
                 )
                 .await;
@@ -89,7 +89,7 @@ impl Pilot {
                             channel,
                             lib::PostmanMsg {
                                 data,
-                                channel: None,
+                                service: None,
                             },
                         )
                         .await;
@@ -142,7 +142,7 @@ impl Pilot {
                         hub.as_ref()
                             .unwrap()
                             .clone()
-                            .send_pilot_msg(Pilot2HubMsg::ChannelConf(conf.clone()))
+                            .send_pilot_msg(Pilot2HubMsg::ServiceConf(conf.clone()))
                             .await
                             .unwrap_or_else(|e| {
                                 error!("failed to send channel conf to hub: {}", e);
@@ -153,7 +153,7 @@ impl Pilot {
                 let channel = conf.name.clone();
                 self.postmen.insert(
                     conf.name.clone(),
-                    ChannelPostman {
+                    ServicePostman {
                         conf,
                         msg_sender: sender2,
                     },
@@ -189,26 +189,25 @@ impl Pilot {
 
                 let mut msg = msg.unwrap();
                 if msg.service.is_none() {
-                    msg.service = postman_msg.channel.take();
+                    msg.service = postman_msg.service.take();
                 }
                 debug!(
-                    "recv channel msg in pilot: {} - {}",
+                    "recv service msg in pilot: {} - {}",
                     msg.service.as_ref().unwrap_or(&"x".to_string()),
                     msg.id
                 );
 
-                // update channel msg latency metric
                 if msg.ts > 0 {
-                    let channel = match msg.service.as_ref() {
+                    let service = match msg.service.as_ref() {
                         Some(s) => s.as_str(),
                         _ => "x",
                     };
-                    metric::update_channel_msg_latency(channel, get_now_milli() - msg.ts);
+                    metric::update_service_msg_latency(service, get_now_milli() - msg.ts);
                 }
 
                 match msg.typ {
-                    CHAN_MSG_TYPE_REG_CHANNEL => self.handle_join_channel_msg(&mut msg).await,
-                    CHAN_MSG_TYPE_UNREG_ROOM | CHAN_MSG_TYPE_UNREG_CHANNEL => {
+                    CHAN_MSG_TYPE_REG_SERVICE => self.handle_join_service_msg(&mut msg).await,
+                    CHAN_MSG_TYPE_UNREG_ROOM | CHAN_MSG_TYPE_UNREG_SERVICE => {
                         self.handle_leave_room_msg(&mut msg).await
                     }
                     CHAN_MSG_TYPE_CONN
@@ -268,38 +267,38 @@ impl Pilot {
         }
     }
 
-    async fn handle_join_channel_msg(&self, msg: &mut ServiceMsg) {
+    async fn handle_join_service_msg(&self, msg: &mut ServiceMsg) {
         debug!("handle join channel msg: {:?}", msg);
         if msg.service.is_none() || msg.cid.is_none() || msg.data.is_none() {
             return;
         }
-        let cid = msg.service.take().unwrap();
-        let sid = msg.cid.take().unwrap();
+        let service = msg.service.take().unwrap();
+        let cid = msg.cid.take().unwrap();
 
-        let channel = self.postmen.get(&cid);
-        if channel.is_none() {
+        let cp = self.postmen.get(&service);
+        if cp.is_none() {
             return;
         }
-        let channel = channel.unwrap();
+        let cp = cp.unwrap();
 
-        let channel_data: serde_json::Result<ServiceData> =
+        let service_data: serde_json::Result<ServiceData> =
             serde_json::from_str(msg.data.take().unwrap().get());
-        if channel_data.is_err() {
+        if service_data.is_err() {
             return;
         }
-        let channel_data = channel_data.unwrap();
+        let service_data = service_data.unwrap();
 
-        if !channel.conf.enable_multi_rooms && channel_data.rids.len() > 1 {
+        if !cp.conf.enable_multi_rooms && service_data.rids.len() > 1 {
             return;
         }
 
         self.send_hub_msgs(
-            Some(sid.clone()),
-            Pilot2HubMsg::JoinChannel(HubJoinServiceMsg {
-                sid,
-                channel: cid.clone(),
-                multi_rooms: channel.conf.enable_multi_rooms,
-                rooms: channel_data.rids,
+            Some(cid.clone()),
+            Pilot2HubMsg::JoinService(HubJoinServiceMsg {
+                cid: cid,
+                service: service.clone(),
+                multi_rooms: cp.conf.enable_multi_rooms,
+                rooms: service_data.rids,
             }),
         )
         .await;
@@ -315,9 +314,9 @@ impl Pilot {
         self.send_hub_msgs(
             sid.clone(),
             Pilot2HubMsg::LeaveRoom(HubLeaveRoomMsg {
-                sid,
+                cid: sid,
                 uid: msg.uid.take(),
-                channel: msg.service.take().unwrap(),
+                service: msg.service.take().unwrap(),
                 room: msg.room.take().unwrap(),
             }),
         )
@@ -367,7 +366,7 @@ impl Pilot {
                 }
             }
             CHAN_MSG_TYPE_SERVICE => {
-                biz_msg.typ = ServiceBizMsgType::Channel;
+                biz_msg.typ = ServiceBizMsgType::Service;
                 biz_msg.service = cmsg.channel_id.take();
                 if biz_msg.service.is_none() {
                     return;

@@ -13,8 +13,8 @@ pub enum MetricMessage {
 #[derive(Debug)]
 pub struct HubMetricMsg {
     pub ix: usize,
-    pub dt_sessions: HashMap<DeviceType, u64>,
-    pub channel_sessions: HashMap<String, u64>,
+    pub dt_conns: HashMap<DeviceType, u64>,
+    pub service_conns: HashMap<String, u64>,
 }
 
 #[derive(Debug)]

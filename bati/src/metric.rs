@@ -57,7 +57,7 @@ lazy_static! {
     .unwrap();
 }
 
-pub fn update_channel_msg_latency(channel: &str, latency: u64) {
+pub fn update_service_msg_latency(channel: &str, latency: u64) {
     let latency: i32 = latency.try_into().unwrap_or(0);
     let latency: f64 = latency.try_into().unwrap_or(0 as f64);
     CHANNEL_MSG_LATENCY
@@ -128,8 +128,8 @@ impl MetricCollector {
                         }
                         let HubMetricMsg {
                             ix,
-                            dt_sessions,
-                            channel_sessions,
+                            dt_conns: dt_sessions,
+                            service_conns: channel_sessions,
                         } = msg;
                         collector.channel_sessions[ix] = channel_sessions;
                         collector.dt_sessions[ix] = dt_sessions;
