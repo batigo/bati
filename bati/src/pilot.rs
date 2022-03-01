@@ -89,7 +89,7 @@ impl Pilot {
                             channel,
                             lib::PostmanMsg {
                                 data,
-                                service: None,
+                                service: None
                             },
                         )
                         .await;
@@ -210,7 +210,7 @@ impl Pilot {
                     CHAN_MSG_TYPE_UNREG_ROOM | CHAN_MSG_TYPE_UNREG_SERVICE => {
                         self.handle_leave_room_msg(&mut msg).await
                     }
-                    CHAN_MSG_TYPE_CONN
+                    SERVICE_MSG_TYPE_CONN
                     | CHAN_MSG_TYPE_BROADCAST
                     | CHAN_MSG_TYPE_SERVICE
                     | CHAN_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
@@ -356,7 +356,7 @@ impl Pilot {
 
         let sid = msg.cid.clone();
         match msg.typ {
-            CHAN_MSG_TYPE_CONN => {
+            SERVICE_MSG_TYPE_CONN => {
                 biz_msg.typ = ServiceBizMsgType::Conn;
                 biz_msg.cid = msg.cid.take();
                 biz_msg.service = cmsg.service_id.take();

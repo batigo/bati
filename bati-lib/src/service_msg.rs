@@ -4,7 +4,7 @@ use std::fmt;
 
 pub type ServiceMsgType = u8;
 
-pub const CHAN_MSG_TYPE_CONN: ServiceMsgType = 1;
+pub const SERVICE_MSG_TYPE_CONN: ServiceMsgType = 1;
 pub const CHAN_MSG_TYPE_SERVICE: ServiceMsgType = 2;
 pub const CHAN_MSG_TYPE_BROADCAST: ServiceMsgType = 3;
 pub const CHAN_MSG_TYPE_ROOM_USERS: ServiceMsgType = 4;

@@ -155,6 +155,38 @@ impl Hub {
             HubMessage::FromTimer(msg) => match msg {
                 Timer2HubMsg::MetricStat => self.do_stats().await,
             },
+            HubMessage::FromTester(mut msg) => {
+                let mut data = HubDataQueryData{
+                    conns: Default::default(),
+                    rooms: Default::default(),
+                    conn_rooms: self.conn_rooms.clone(),
+                    services: Default::default(),
+                    conn_services: self.conn_services.clone(),
+                    uid_conns: self.uid_conns.clone(),
+                    dt_conns: self.dt_conns.clone(),
+                    service_confs: self.service_confs.clone(),
+                    encoders: self.encoders.clone(),
+                };
+
+                for (id, conn) in self.conns.iter() {
+                    data.conns.insert(id.to_string(), conn.addr.clone());
+                }
+                for (id, conn) in self.rooms.iter() {
+                    let mut conns = HashMap::new();
+                    for (id, conn) in conn.iter() {
+                        conns.insert(id.to_string(), conn.addr.clone());
+                    }
+                    data.rooms.insert(id.to_string(), conns);
+                }
+                for (id, conn) in self.services.iter() {
+                    let mut conns = HashMap::new();
+                    for (id, conn) in conn.iter() {
+                        conns.insert(id.to_string(), conn.addr.clone());
+                    }
+                    data.services.insert(id.to_string(), conns);
+                }
+                msg.sender.try_send(data).unwrap();
+            }
         }
     }
 

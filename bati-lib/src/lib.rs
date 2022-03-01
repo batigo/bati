@@ -15,7 +15,7 @@ pub fn gen_msg_id() -> String {
     )
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PostmanMsg {
     pub data: bytes::Bytes,
     pub service: Option<String>,

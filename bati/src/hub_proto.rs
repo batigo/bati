@@ -6,6 +6,8 @@ use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use ntex::util::Bytes;
 use std::fmt;
+use std::collections::*;
+use std::rc::Rc;
 
 pub fn new_hub_channel(buffer: usize) -> (HubSender, HubReceiver) {
     let (tx, rx) = mpsc::channel(buffer);
@@ -45,6 +47,7 @@ pub enum HubMessage {
     FromConn(Conn2HubMsg),
     FromPilot(Pilot2HubMsg),
     FromTimer(Timer2HubMsg),
+    FromTester(HubDataQueryMsg),
 }
 
 // recved from pilot
@@ -234,4 +237,22 @@ impl fmt::Display for ConnUnregMsg {
 #[derive(Debug)]
 pub enum Timer2HubMsg {
     MetricStat,
+}
+
+// only for test
+
+pub struct HubDataQueryMsg {
+    pub sender: mpsc::Sender<HubDataQueryData>,
+}
+
+pub struct HubDataQueryData {
+    pub conns: HashMap<String, ConnSender>,
+    pub rooms: HashMap<String, HashMap<String, ConnSender>>,
+    pub conn_rooms: HashMap<String, HashSet<String>>,
+    pub services: HashMap<String, HashMap<String, ConnSender>>,
+    pub conn_services: HashMap<String, HashSet<String>>,
+    pub uid_conns: HashMap<String, HashSet<String>>,
+    pub dt_conns: HashMap<DeviceType, u64>,
+    pub service_confs: HashMap<String, lib::ServiceConf>,
+    pub encoders: Vec<Encoder>,
 }
