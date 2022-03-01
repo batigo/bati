@@ -1,7 +1,8 @@
 use crate::hub_proto::HubSender;
 use futures::{channel::mpsc, SinkExt, StreamExt};
-
+use std::collections::*;
 use bati_lib::{ServiceConf, PostmanMsg};
+use crate::encoding::*;
 
 type SendResult = Result<(), mpsc::SendError>;
 
@@ -11,6 +12,7 @@ pub enum PilotMessage {
     FromMaster(PilotAddHubMsg),
     FromServiceFinder(ServiceConf),
     FromPostman(PostmanMsg),
+    FromTester(PilotQueryMsg),
 }
 
 #[derive(Clone)]
@@ -73,4 +75,15 @@ pub enum Hub2PilotMsg {
 pub struct PilotServiceBizMsg {
     pub service: String,
     pub data: bytes::Bytes,
+}
+
+// only for test
+pub struct PilotQueryMsg {
+    pub sender: mpsc::Sender<PilotQueryData>,
+}
+
+pub struct PilotQueryData {
+    pub hubs: Vec<Option<HubSender>>,
+    pub postmen: HashMap<String, ServiceConf>,
+    pub encoders: Vec<Encoder>,
 }

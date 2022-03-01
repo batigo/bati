@@ -219,6 +219,17 @@ impl Pilot {
                     }
                 }
             }
+            PilotMessage::FromTester(mut msg) => {
+                let mut data = PilotQueryData{
+                    hubs: self.hubs.clone(),
+                    postmen: HashMap::new(),
+                    encoders: self.encoders.clone(),
+                };
+                for (id, d) in self.postmen.iter() {
+                    data.postmen.insert(id.to_string(), d.conf.clone());
+                }
+                msg.sender.try_send(data).unwrap();
+            }
         }
     }
 
