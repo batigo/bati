@@ -205,8 +205,6 @@ impl fmt::Display for Conn2HubMsg {
 #[derive(Clone)]
 pub struct ConnRegMsg {
     pub cid: String,
-    pub did: String,
-    pub ip: Option<String>,
     pub uid: String,
     pub encoder: Encoder,
     pub dt: DeviceType,

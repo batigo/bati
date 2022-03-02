@@ -386,20 +386,28 @@ impl Hub {
     }
 
     async fn handle_conn_register_msg(&mut self, msg: ConnRegMsg) {
-        debug!("new conn registered in hub-{}: {}", self.ix, &msg.cid);
-        self.incr_dt_count(msg.dt);
-        self.add_uid(&msg.uid, &msg.cid);
+        if self.conns.contains_key(&msg.cid) {
+            warn!("conn re-register: {}", msg.cid);
+            return
+        }
+
+        let ConnRegMsg{
+            cid,   uid, encoder, dt, addr
+        } = msg;
+
+        debug!("new conn registered in hub-{}: {}", self.ix, cid);
+        self.incr_dt_count(dt);
+        self.add_uid(&uid, &cid);
 
         let conn = Rc::new(Conn {
-            uid: msg.uid,
-            addr: msg.addr,
-            encoder: msg.encoder.clone(),
+            uid, addr,
+            encoder: encoder.clone(),
         });
-        self.conns.insert(msg.cid, conn);
-        if !self.encoders.contains(&msg.encoder) {
-            self.encoders.push(msg.encoder.clone());
+        self.conns.insert(cid, conn);
+        if !self.encoders.contains(&encoder) {
+            self.encoders.push(encoder.clone());
             self.pilot
-                .send_hub_msg(Hub2PilotMsg::EncodingMsg(msg.encoder.name()))
+                .send_hub_msg(Hub2PilotMsg::EncodingMsg(encoder.name()))
                 .await
                 .unwrap_or_else(|e| error!("failed to send pilot encoding msg: {}", e));
         }
@@ -696,194 +704,13 @@ impl Hub {
 mod test {
     use super::*;
 
-    #[test]
-    fn test_reg_session() {
-        let mut hub = Hub::new(1);
-        let uid = "1".to_string();
-        let sid = "abcd";
-        let msg = ConnRegMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            encoder: Encoder::new(NULLENCODER_NAME),
-            dt: DEVICE_TYPE_IOS,
-            addr: None,
-        };
-
-        hub.handle_conn_register_msg(msg);
-        assert_eq!(hub.conns.len(), 1);
-        assert_eq!(hub.conns.get(sid).is_some(), true);
-        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_IOS).unwrap(), 1);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
-        assert_eq!(hub.encoders.contains(&Encoder::new(NULLENCODER_NAME)), true);
-        assert_eq!(hub.encoders.contains(&Encoder::new(ZSTD_NAME)), false);
-
-        let uid = 1;
-        let sid = "abcde";
-        let msg = ConnRegMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            encoder: Encoder::new(ZSTD_NAME),
-            dt: DEVICE_TYPE_ANDROID,
-            addr: None,
-        };
-        hub.handle_conn_register_msg(msg);
-        assert_eq!(hub.conns.len(), 2);
-        assert_eq!(hub.conns.get(sid).is_some(), true);
-        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 2);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
-        assert_eq!(hub.encoders.contains(&Encoder::new(ZSTD_NAME)), true);
-
-        let uid = 2;
-        let sid = "abcdef";
-        let msg = ConnRegMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            encoder: Encoder::new(ZSTD_NAME),
-            dt: DEVICE_TYPE_ANDROID,
-            addr: None,
-        };
-        hub.handle_conn_register_msg(msg);
-        assert_eq!(hub.conns.len(), 3);
-        assert_eq!(hub.conns.get(sid).is_some(), true);
-        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
-        assert_eq!(hub.uid_conns.len(), 2);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 2);
-        // encoders 不会重复膨胀
-        assert_eq!(hub.encoders.len(), 2);
-
-        let msg = ConnUnregMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            dt: DEVICE_TYPE_ANDROID,
-        };
-        hub.handle_conn_unregister_msg(msg);
-        assert_eq!(hub.conns.len(), 2);
-        assert_eq!(hub.conns.get(sid).is_some(), false);
-        assert_eq!(hub.uid_conns.get(&uid).is_some(), false);
-        assert_eq!(hub.uid_conns.len(), 1);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 1);
-        assert_eq!(hub.encoders.len(), 2);
-
-        let uid = 1;
-        let sid = "abcde";
-        let msg = ConnUnregMsg {
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            dt: DEVICE_TYPE_ANDROID,
-            uid,
-        };
-        hub.handle_conn_unregister_msg(msg);
-        assert_eq!(hub.conns.len(), 1);
-        assert_eq!(hub.conns.get(sid).is_some(), false);
-        assert_eq!(hub.uid_conns.get(&uid).unwrap().len(), 1);
-        assert_eq!(*hub.dt_conns.get(DEVICE_TYPE_ANDROID).unwrap(), 0);
+    struct AllSenders {
+        hub_sender: HubSender,
+        pilot_sender: PilotSender,
     }
 
-    #[test]
-    fn test_reg_room_with_nonreg_session() {
-        let mut hub = Hub::new(1);
-        let cid = "abc";
-        let service = "channel_1";
-        let msg = HubJoinServiceMsg {
-            cid: cid.to_string(),
-            service: service.to_string(),
-            rooms: vec!["room_1".to_string()],
-            multi_rooms: false,
-        };
-        hub.handle_join_service_msg(msg);
-        // room not register
-        assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.services.len(), 0);
+    fn async_env_prepare()  {
+
     }
 
-    #[test]
-    fn test_reg_room_with_reg_session() {
-        // construct data
-        let mut hub = Hub::new(1);
-        let sid = "abc";
-        let uid = 1;
-        let reg_session_msg = ConnRegMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            encoder: Encoder::new(NULLENCODER_NAME),
-            dt: DEVICE_TYPE_IOS,
-            addr: None,
-        };
-
-        let unreg_session_msg = ConnUnregMsg {
-            uid,
-            cid: sid.to_string(),
-            did: "".to_string(),
-            ip: None,
-            dt: DEVICE_TYPE_IOS,
-        };
-
-        let channel = "channel_1";
-        let room = "room_1";
-        let join_channel_msg = HubJoinServiceMsg {
-            cid: sid.to_string(),
-            service: channel.to_string(),
-            rooms: vec![room.to_string()],
-            multi_rooms: false,
-        };
-
-        let leave_room_msg = HubLeaveRoomMsg {
-            uid: None,
-            cid: Some(sid.to_string()),
-            service: channel.to_string(),
-            room: room.to_string(),
-        };
-
-        hub.handle_conn_register_msg(reg_session_msg.clone());
-        hub.handle_join_service_msg(join_channel_msg.clone());
-        assert_eq!(hub.rooms.len(), 1);
-        assert_eq!(hub.services.len(), 1);
-        assert_eq!(
-            hub.services.get(channel).unwrap().get(sid).unwrap().uid,
-            uid
-        );
-        let room_id = ServiceRoom::gen_room_id(channel, room).unwrap();
-        assert_eq!(hub.rooms.get(&room_id).unwrap().get(sid).unwrap().uid, uid);
-        assert_eq!(hub.get_conn_rooms(sid).unwrap().len(), 1);
-        assert!(hub.get_conn_rooms(sid).unwrap().contains(&room_id));
-        assert_eq!(hub.get_conn_services(sid).unwrap().len(), 1);
-        assert!(hub.get_conn_services(sid).unwrap().contains(channel));
-
-        // session unreg, clear room & channel resource
-        hub.handle_conn_unregister_msg(unreg_session_msg.clone());
-        assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.services.len(), 0);
-        assert_eq!(hub.get_conn_rooms(sid), None);
-        assert_eq!(hub.get_conn_services(sid), None);
-
-        // session leave room
-        hub.handle_conn_register_msg(reg_session_msg.clone());
-        hub.handle_join_service_msg(join_channel_msg.clone());
-        hub.handle_leave_room_msg(leave_room_msg.clone());
-        assert_eq!(hub.rooms.len(), 0);
-        assert_eq!(hub.services.len(), 1);
-        assert_eq!(hub.get_conn_rooms(sid), None);
-        // already in channel
-        assert_eq!(hub.services.get(channel).unwrap().get(sid).is_some(), true);
-        // unreg session
-        hub.handle_conn_unregister_msg(unreg_session_msg.clone());
-        assert_eq!(hub.services.len(), 0);
-    }
-
-    #[test]
-    fn test_multi_rooms() {
-        // no multiroom, auto-leave room
-    }
 }

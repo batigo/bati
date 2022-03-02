@@ -403,11 +403,9 @@ impl Conn {
         let msg = Conn2HubMsg::Register(ConnRegMsg {
             cid: self.id.clone(),
             uid: self.uid.clone(),
-            did: self.did.clone(),
             dt: self.dt,
             encoder: self.encoder.clone().unwrap(),
             addr: self.msg_sender.clone(),
-            ip: Some(self.ip.clone()),
         });
         match self.hub.send_session_msg(msg).await {
             Ok(_) => {
