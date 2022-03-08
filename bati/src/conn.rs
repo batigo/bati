@@ -161,15 +161,14 @@ impl Conn {
 
     async fn send_client_msg(&self, msg: WsMessage) -> bool {
         let mut ok = true;
-        self.ws_sink
-            .as_ref()
-            .unwrap()
-            .send(msg)
-            .await
-            .unwrap_or_else(|e| {
-                error!("failed to send msg to client: {} - {:?}", self.id, e);
-                ok = false;
-            });
+        if let Some(ws) = self.ws_sink.as_ref() {
+            ws.send(msg)
+                .await
+                .unwrap_or_else(|e| {
+                    error!("failed to send msg to client: {} - {:?}", self.id, e);
+                    ok = false;
+                });
+        }
         ok
     }
 
