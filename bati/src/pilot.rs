@@ -188,12 +188,9 @@ impl Pilot {
                 }
 
                 match msg.typ {
-                    SERVICE_MSG_TYPE_CONN_JOIN => self.handle_join_service_msg(&mut msg).await,
-                    SERVICE_MSG_TYPE_CONN_QUIT => self.handle_leave_room_msg(&mut msg).await,
-                    SERVICE_MSG_TYPE_BIZ
-                    | SERVICE_MSG_TYPE_BROADCAST
-                    | SERVICE_MSG_TYPE_SERVICE
-                    | SERVICE_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
+                    SERVICE_MSG_TYPE_CONN_JOIN => self.handle_join_service_msg(msg).await,
+                    SERVICE_MSG_TYPE_CONN_QUIT => self.handle_quit_service_msg(msg).await,
+                    SERVICE_MSG_TYPE_BIZ => self.handle_biz_msg(msg).await,
                     _ => {
                         warn!("bad service msg type: {}", msg.typ);
                     }
@@ -258,7 +255,7 @@ impl Pilot {
         }
     }
 
-    async fn handle_join_service_msg(&self, msg: &mut ServiceMsg2) {
+    async fn handle_join_service_msg(&self, mut msg: ServiceMsg2) {
         debug!("handle join service msg: {:?}", msg);
         if msg.join_data.is_none() {
             return;
@@ -281,6 +278,10 @@ impl Pilot {
 
         let cp = cp.unwrap();
         if !cp.conf.enable_multi_rooms && rids.is_some() && rids.as_ref().unwrap().len() > 1 {
+            warn!(
+                "service-{} disable multirooms, recv join multi-rooms msg: {}",
+                msg.service, msg.id
+            );
             return;
         }
 
@@ -291,52 +292,75 @@ impl Pilot {
                 uid,
                 service: service.clone(),
                 multi_rooms: cp.conf.enable_multi_rooms,
-                rooms: service_data.rids,
+                rooms: rids,
                 join_service: join_data.join_service,
             }),
         )
         .await;
     }
 
-    async fn handle_leave_room_msg(&mut self, msg: &mut ServiceMsg) {
+    async fn handle_quit_service_msg(&mut self, mut msg: ServiceMsg2) {
         debug!("handle leave room msg: {:?}", msg);
-        if msg.service.is_none() || msg.room.is_none() || (msg.uid.is_none() && msg.cid.is_none()) {
+        if msg.quit_data.is_none() {
             return;
         }
 
-        let sid = msg.cid.take();
+        let mut quit_data = msg.quit_data.take().unwrap();
+        let cid = quit_data.cid.take();
+        let uid = quit_data.uid.take();
+
         self.send_hub_msgs(
-            sid.clone(),
+            cid.clone(),
             Pilot2HubMsg::LeaveRoom(HubLeaveRoomMsg {
-                cid: sid,
-                uid: msg.uid.take(),
+                cid,
+                uid,
                 service: msg.service.take().unwrap(),
                 room: msg.room.take().unwrap(),
+                quit_service: quit_data.quit_service,
             }),
         )
         .await;
     }
 
-    async fn handle_biz_msg(&mut self, msg: &mut ServiceMsg) {
+    async fn handle_biz_msg(&mut self, mut msg: ServiceMsg2) {
         debug!("handle channel biz msg: {:?}", msg);
-        if msg.data.is_none() {
+        if msg.biz_data.is_none() {
             warn!("no biz data for msg: {}", msg.id);
             return;
         };
 
+        let mut biz_data = msg.biz_data.take().unwrap();
+
+        let ServiceMsg2 {
+            id, service, typ, ..
+        } = msg;
+
         let mut biz_msg = HubServiceBizMsg::default();
         let mut cmsg = ClientMsg {
-            id: msg.id.clone(),
+            id: id.clone(),
             typ: ClientMsgType(CMSG_TYPE_BIZ),
             ack: 0,
-            service_id: msg.service.take(),
-            data: msg.data.take(),
+            service_id: Some(service.clone()),
+            data: biz_data.data.take(),
         };
         let data = serde_json::to_vec(&cmsg);
         if data.is_err() {
             error!("failed to gen Session2ClientMsg: {}", data.err().unwrap());
             return;
         }
+
+        let mut biz_msg = HubServiceBizMsg {
+            id,
+            typ,
+            cids: biz_data.cids.take(),
+            uids: biz_data.uids.take(),
+            service: Some(service),
+            room: biz_msg.room.take(),
+            blacks: biz_data.black_uids.take(),
+            whites: biz_data.white_uids.take(),
+            ratio: biz_data.broadcast_rate.take(),
+            data: Default::default(),
+        };
 
         biz_msg.data = ServiceBizData::new(Bytes::from(data.unwrap()));
         self.encoders.iter().for_each(|e| {
@@ -348,53 +372,15 @@ impl Pilot {
                 });
         });
 
-        let sid = msg.cid.clone();
-        match msg.typ {
-            SERVICE_MSG_TYPE_BIZ => {
-                biz_msg.typ = ServiceBizMsgType::Conn;
-                biz_msg.cid = msg.cid.take();
-                biz_msg.service = cmsg.service_id.take();
-                if biz_msg.cid.is_none() {
-                    warn!("conn not found for conn-bizmsg: {}", msg.id);
-                    return;
-                }
-            }
-            SERVICE_MSG_TYPE_SERVICE => {
-                biz_msg.typ = ServiceBizMsgType::Service;
-                biz_msg.service = cmsg.service_id.take();
-                if biz_msg.service.is_none() {
-                    return;
-                }
-                biz_msg.room = msg.room.take();
-                biz_msg.ratio = self.get_broadcast_ratio(&msg);
-                biz_msg.blacks = msg.exclude_uids.take();
-                biz_msg.whites = msg.include_uids.take();
-            }
-            SERVICE_MSG_TYPE_BROADCAST => {
-                biz_msg.typ = ServiceBizMsgType::Broadcast;
-                biz_msg.ratio = self.get_broadcast_ratio(&msg);
-                biz_msg.blacks = msg.exclude_uids.take();
-                biz_msg.whites = msg.include_uids.take();
-            }
-            SERVICE_MSG_TYPE_ROOM_USERS => {
-                biz_msg.typ = ServiceBizMsgType::Room;
-                biz_msg.service = cmsg.service_id.take();
-                biz_msg.room = msg.room.take();
-                biz_msg.uids = msg.uids.take();
-                if biz_msg.service.is_none()
-                    || biz_msg.room.is_none()
-                    || biz_msg.uids.is_none()
-                    || biz_msg.uids.as_ref().unwrap().is_empty()
-                {
-                    return;
-                }
-            }
-            _ => {
-                return;
-            }
+        if biz_msg.cids.is_some() && biz_msg.cids.as_ref().unwrap().len() == 1 {
+            self.send_hub_msgs(
+                biz_msg.cids.as_ref().unwrap().get(0).cloned(),
+                Pilot2HubMsg::Biz(biz_msg),
+            )
+            .await
+        } else {
+            self.send_hub_msgs(None, Pilot2HubMsg::Biz(biz_msg)).await;
         }
-        biz_msg.id = msg.id.clone();
-        self.send_hub_msgs(sid, Pilot2HubMsg::Biz(biz_msg)).await;
     }
 
     fn get_broadcast_ratio(&self, msg: &ServiceMsg) -> Option<u8> {

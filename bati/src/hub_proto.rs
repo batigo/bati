@@ -62,11 +62,11 @@ pub enum Pilot2HubMsg {
 #[derive(Clone, Default, Debug)]
 pub struct HubServiceBizMsg {
     pub id: String,
-    pub typ: ServiceBizMsgType,
-    pub cid: Option<String>,
+    pub typ: lib::BatiMsgType,
+    pub cids: Option<Vec<String>>,
+    pub uids: Option<Vec<String>>,
     pub service: Option<String>,
     pub room: Option<String>,
-    pub uids: Option<Vec<u64>>,
     pub ratio: Option<u8>,
     pub whites: Option<Vec<String>>,
     pub blacks: Option<Vec<String>>,
@@ -75,7 +75,7 @@ pub struct HubServiceBizMsg {
 
 #[derive(Copy, Clone, Debug)]
 pub enum ServiceBizMsgType {
-    Conn,
+    Users,
     Room,
     Service,
     Broadcast,
@@ -83,7 +83,7 @@ pub enum ServiceBizMsgType {
 
 impl Default for ServiceBizMsgType {
     fn default() -> Self {
-        ServiceBizMsgType::Conn
+        ServiceBizMsgType::Users
     }
 }
 
@@ -151,7 +151,7 @@ pub struct HubJoinServiceMsg {
     pub cid: Option<String>,
     pub uid: Option<String>,
     pub service: String,
-    pub rooms: Vec<String>,
+    pub rooms: Option<Vec<String>>,
     pub multi_rooms: bool,
     pub join_service: bool,
 }
@@ -172,6 +172,7 @@ pub struct HubLeaveRoomMsg {
     pub cid: Option<String>,
     pub service: String,
     pub room: String,
+    pub quit_service: bool,
 }
 
 impl fmt::Display for HubLeaveRoomMsg {
