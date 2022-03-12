@@ -1,11 +1,11 @@
-pub mod service_msg;
-mod service;
-mod service_registry;
 mod kafka;
 mod postman;
+mod service;
+pub mod service_msg;
+mod service_registry;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use self::{service_msg::*, service::*, service_registry::*, postman::*};
+pub use self::{postman::*, service::*, service_msg::*, service_registry::*};
 use std::convert::TryInto;
 
 pub fn gen_msg_id() -> String {
@@ -13,12 +13,6 @@ pub fn gen_msg_id() -> String {
         "{:x}",
         md5::compute(&uuid::Uuid::new_v4().to_string().as_bytes())
     )
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct PostmanMsg {
-    pub data: bytes::Bytes,
-    pub service: Option<String>,
 }
 
 pub fn get_now_milli() -> u64 {

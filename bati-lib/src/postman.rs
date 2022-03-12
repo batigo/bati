@@ -1,5 +1,5 @@
 use crate::kafka::KafkaPostman;
-use crate::{ServiceConf, PostmanMsg};
+use crate::{ServiceConf, ServiceMsg2};
 use futures::channel::mpsc::{Receiver, Sender};
 use std::error::Error;
 
@@ -104,6 +104,17 @@ impl PostmanType {
             _ => "_up".to_string(),
         }
     }
+}
+
+pub enum PostmanMsg {
+    Upper(PostmanBatiMsg),
+    Downer(ServiceMsg2),
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct PostmanBatiMsg {
+    pub data: bytes::Bytes,
+    pub service: Option<String>,
 }
 
 fn get_local_ip() -> Option<String> {

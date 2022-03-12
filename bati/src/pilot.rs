@@ -12,7 +12,7 @@ use crate::pilot_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
 use bati_lib::service_msg::*;
-use bati_lib::{get_now_milli, Postman, ServiceConf, ServiceData, ServiceMsg};
+use bati_lib::{get_now_milli, Postman, PostmanMsg, ServiceConf, ServiceData, ServiceMsg};
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -75,7 +75,7 @@ impl Pilot {
                 } = msg;
                 self.send_postman_msg(
                     channel,
-                    lib::PostmanMsg {
+                    lib::PostmanBatiMsg {
                         data,
                         service: None,
                     },
@@ -93,7 +93,7 @@ impl Pilot {
                         } = msg;
                         self.send_postman_msg(
                             channel,
-                            lib::PostmanMsg {
+                            lib::PostmanBatiMsg {
                                 data,
                                 service: None,
                             },
@@ -168,7 +168,7 @@ impl Pilot {
                 let mut sender = self.msg_sender.clone();
                 rt::spawn(async move {
                     loop {
-                        if let Some(msg) = receiver1.next().await {
+                        if let Some(PostmanMsg::Downer(msg)) = receiver1.next().await {
                             sender.send_postman_msg(msg).await.unwrap_or_else(|e| {
                                 error!("failed to send pilot msg to hub: {}", e)
                             });
@@ -180,43 +180,17 @@ impl Pilot {
                 });
             }
 
-            PilotMessage::FromPostman(mut postman_msg) => {
-                let s = std::str::from_utf8(postman_msg.data.as_ref());
-                if s.is_err() {
-                    error!("bad postman msg recved: {}", s.err().unwrap());
-                    return;
-                }
-
-                let msg: serde_json::Result<ServiceMsg> = serde_json::from_str(s.unwrap());
-                if msg.is_err() {
-                    error!("bad postman msg recved: {}", msg.err().unwrap());
-                    return;
-                }
-
-                let mut msg = msg.unwrap();
-                if msg.service.is_none() {
-                    msg.service = postman_msg.service.take();
-                }
-                debug!(
-                    "recv service msg in pilot: {} - {}",
-                    msg.service.as_ref().unwrap_or(&"x".to_string()),
-                    msg.id
-                );
+            PilotMessage::FromPostman(mut msg) => {
+                debug!("recv service msg in pilot: {} - {}", msg.service, msg.id);
 
                 if msg.ts > 0 {
-                    let service = match msg.service.as_ref() {
-                        Some(s) => s.as_str(),
-                        _ => "x",
-                    };
-                    metric::update_service_msg_latency(service, get_now_milli() - msg.ts);
+                    metric::update_service_msg_latency(&msg.service, get_now_milli() - msg.ts);
                 }
 
                 match msg.typ {
-                    SERVICE_MSG_TYPE_REG_SERVICE => self.handle_join_service_msg(&mut msg).await,
-                    SERVICE_MSG_TYPE_UNREG_ROOM | SERVICE_MSG_TYPE_UNREG_SERVICE => {
-                        self.handle_leave_room_msg(&mut msg).await
-                    }
-                    SERVICE_MSG_TYPE_CONN
+                    SERVICE_MSG_TYPE_CONN_JOIN => self.handle_join_service_msg(&mut msg).await,
+                    SERVICE_MSG_TYPE_CONN_QUIT => self.handle_leave_room_msg(&mut msg).await,
+                    SERVICE_MSG_TYPE_BIZ
                     | SERVICE_MSG_TYPE_BROADCAST
                     | SERVICE_MSG_TYPE_SERVICE
                     | SERVICE_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
@@ -239,8 +213,8 @@ impl Pilot {
         }
     }
 
-    fn get_specified_hub_by_conn_id(&self, sid: &str) -> Option<HubSender> {
-        if let Some(ix) = get_worker_index_from_conn_id(sid) {
+    fn get_specified_hub_by_cid(&self, cid: &str) -> Option<HubSender> {
+        if let Some(ix) = get_worker_index_from_cid(cid) {
             if let Some(hub) = self.hubs.get(ix) {
                 if hub.is_some() {
                     return Some(hub.as_ref().unwrap().clone());
@@ -251,11 +225,11 @@ impl Pilot {
         None
     }
 
-    async fn send_hub_msgs(&self, sid: Option<String>, msg: Pilot2HubMsg) {
-        match sid {
-            Some(ref sid) => {
-                if let Some(mut hub) = self.get_specified_hub_by_conn_id(sid) {
-                    debug!("send single-hub HubPilotMsg, sid: {}", sid);
+    async fn send_hub_msgs(&self, cid: Option<String>, msg: Pilot2HubMsg) {
+        match cid {
+            Some(ref cid) => {
+                if let Some(mut hub) = self.get_specified_hub_by_cid(cid) {
+                    debug!("send single-hub HubPilotMsg, sid: {}", cid);
                     hub.send_pilot_msg(msg).await.unwrap_or_else(|e| {
                         error!("failed to send HubPilotMsg: {}", e);
                     });
@@ -284,38 +258,41 @@ impl Pilot {
         }
     }
 
-    async fn handle_join_service_msg(&self, msg: &mut ServiceMsg) {
+    async fn handle_join_service_msg(&self, msg: &mut ServiceMsg2) {
         debug!("handle join service msg: {:?}", msg);
-        if msg.service.is_none() || msg.cid.is_none() || msg.data.is_none() {
+        if msg.join_data.is_none() {
             return;
         }
-        let service = msg.service.take().unwrap();
-        let cid = msg.cid.take().unwrap();
 
-        let cp = self.postmen.get(&service);
+        let mut join_data = msg.join_data.take().unwrap();
+        if join_data.cid.is_none() && join_data.uid.is_none() {
+            return;
+        }
+
+        let service = &msg.service;
+        let cid = join_data.cid.take();
+        let uid = join_data.uid.take();
+        let rids = join_data.rids.take();
+
+        let cp = self.postmen.get(service);
         if cp.is_none() {
             return;
         }
+
         let cp = cp.unwrap();
-
-        let service_data: serde_json::Result<ServiceData> =
-            serde_json::from_str(msg.data.take().unwrap().get());
-        if service_data.is_err() {
-            return;
-        }
-        let service_data = service_data.unwrap();
-
-        if !cp.conf.enable_multi_rooms && service_data.rids.len() > 1 {
+        if !cp.conf.enable_multi_rooms && rids.is_some() && rids.as_ref().unwrap().len() > 1 {
             return;
         }
 
         self.send_hub_msgs(
-            Some(cid.clone()),
+            cid.clone(),
             Pilot2HubMsg::JoinService(HubJoinServiceMsg {
-                cid: cid,
+                cid,
+                uid,
                 service: service.clone(),
                 multi_rooms: cp.conf.enable_multi_rooms,
                 rooms: service_data.rids,
+                join_service: join_data.join_service,
             }),
         )
         .await;
@@ -373,7 +350,7 @@ impl Pilot {
 
         let sid = msg.cid.clone();
         match msg.typ {
-            SERVICE_MSG_TYPE_CONN => {
+            SERVICE_MSG_TYPE_BIZ => {
                 biz_msg.typ = ServiceBizMsgType::Conn;
                 biz_msg.cid = msg.cid.take();
                 biz_msg.service = cmsg.service_id.take();
@@ -428,16 +405,19 @@ impl Pilot {
         }
     }
 
-    async fn send_postman_msg(&mut self, channel: String, msg: lib::PostmanMsg) {
+    async fn send_postman_msg(&mut self, channel: String, msg: lib::PostmanBatiMsg) {
         debug!("recv PilotHubMsg: {} - {:?}", channel, msg);
         if let Some(postman) = self.postmen.get_mut(&channel) {
             let mut sender = postman.msg_sender.clone();
-            sender.send(msg).await.unwrap_or_else(|e| {
-                error!(
-                    "failed to send msg to postman in channel: {}, err: {}",
-                    channel, e
-                );
-            });
+            sender
+                .send(PostmanMsg::Upper(msg))
+                .await
+                .unwrap_or_else(|e| {
+                    error!(
+                        "failed to send msg to postman in channel: {}, err: {}",
+                        channel, e
+                    );
+                });
         } else {
             warn!("channel postman not found: {}", channel);
         }

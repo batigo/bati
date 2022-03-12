@@ -1,12 +1,12 @@
+use crate::conn_proto::ConnSender;
 use crate::const_proto::*;
 use crate::encoding::*;
-use crate::conn_proto::ConnSender;
 use bati_lib as lib;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use ntex::util::Bytes;
-use std::fmt;
 use std::collections::*;
+use std::fmt;
 use std::rc::Rc;
 
 pub fn new_hub_channel(buffer: usize) -> (HubSender, HubReceiver) {
@@ -148,10 +148,12 @@ impl ServiceBizData {
 
 #[derive(Clone, Debug)]
 pub struct HubJoinServiceMsg {
-    pub cid: String,
+    pub cid: Option<String>,
+    pub uid: Option<String>,
     pub service: String,
     pub rooms: Vec<String>,
     pub multi_rooms: bool,
+    pub join_service: bool,
 }
 
 impl fmt::Display for HubJoinServiceMsg {

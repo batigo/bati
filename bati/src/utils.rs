@@ -6,7 +6,7 @@ pub fn gen_conn_id(did: &str, uid: &str, worker_index: usize) -> String {
     format!("{}_{}", id, worker_index)
 }
 
-pub fn get_worker_index_from_conn_id(cid: &str) -> Option<usize> {
+pub fn get_worker_index_from_cid(cid: &str) -> Option<usize> {
     let s: Vec<&str> = cid.split('_').collect();
     if s.len() != 2 {
         return None;

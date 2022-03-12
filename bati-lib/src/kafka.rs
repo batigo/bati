@@ -1,4 +1,4 @@
-use crate::PostmanMsg;
+use crate::{PostmanMsg, ServiceMsg2};
 use futures::channel::mpsc::{Receiver, Sender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
@@ -16,7 +16,7 @@ use std::time::Duration;
 pub struct KafkaPostman {
     brokers: String,
     topic: String,
-    channel: String,
+    service: String,
     group: String,
     msg_sender: Option<Sender<PostmanMsg>>,
     msg_receiver: Option<Receiver<PostmanMsg>>,
@@ -34,7 +34,7 @@ impl KafkaPostman {
         KafkaPostman {
             brokers,
             topic,
-            channel,
+            service: channel,
             group,
             msg_sender: sender,
             msg_receiver: receiver,
@@ -47,7 +47,7 @@ impl KafkaPostman {
                 Ok(consumer) => {
                     let sender = self.msg_sender.take().unwrap();
                     let topic = self.topic.clone();
-                    let channel = self.channel.clone();
+                    let channel = self.service.clone();
                     rt::spawn(async move {
                         run_consumer(topic, channel, sender, consumer).await;
                     });
@@ -103,11 +103,11 @@ async fn run_producer(topic: String, mut recevier: Receiver<PostmanMsg>, produce
     warn!("kafka producer run for: {}", topic);
     loop {
         match recevier.next().await {
-            Some(msg) => {
+            Some(PostmanMsg::Upper(mut msg)) => {
                 debug!(
                     "recv pilot msg in kafka producer: {} - {}",
                     topic,
-                    String::from_utf8(msg.data.clone().to_vec()).unwrap()
+                    String::from_utf8(msg.data.as_ref()).unwrap()
                 );
                 let rec = FutureRecord::to(&topic)
                     .payload(msg.data.to_bytes())
@@ -130,7 +130,7 @@ async fn run_producer(topic: String, mut recevier: Receiver<PostmanMsg>, produce
 
 async fn run_consumer(
     topic: String,
-    channel: String,
+    service: String,
     mut sender: Sender<PostmanMsg>,
     consumer: LoggingConsumer,
 ) {
@@ -139,13 +139,29 @@ async fn run_consumer(
         match consumer.recv().await {
             Ok(msg) => match msg.payload() {
                 Some(bs) => {
-                    let msg = PostmanMsg {
-                        data: bytes::Bytes::from(bs.to_owned().to_vec()),
-                        service: Some(channel.clone()),
-                    };
-                    sender.send(msg).await.unwrap_or_else(|e| {
-                        error!("failed to send PostmanMsg to : {}", e);
-                    });
+                    let mut msg: serde_json::Result<ServiceMsg2> = serde_json::from_slice(bs);
+                    if msg.is_err() {
+                        error!(
+                            "recv bad msg from service: {}, failed to parse msg: {}",
+                            service,
+                            msg.err().unwrap().to_string()
+                        );
+                        continue;
+                    }
+                    let mut msg = msg.unwrap();
+                    if msg.service.len() == 0 {
+                        msg.service = service.clone();
+                    }
+                    if let Err(e) = msg.valiate() {
+                        warn!("recv bad msg from service: {}, err: {}", service, e);
+                        continue;
+                    }
+                    sender
+                        .send(PostmanMsg::Downer(msg))
+                        .await
+                        .unwrap_or_else(|e| {
+                            error!("failed to send PostmanMsg to : {}", e);
+                        });
                 }
                 _ => {
                     warn!("recv empty kafka msg in topic: {}", topic);
