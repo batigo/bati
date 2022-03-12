@@ -191,17 +191,16 @@ impl Hub {
         self.conns.get(cid)
     }
 
+    fn get_conn_clone(&self, cid: &str) -> Option<Rc<Conn>> {
+        self.conns.get(cid).cloned()
+    }
+
     fn get_uid_cids_clone(&self, uid: &str) -> Option<HashSet<String>> {
         self.uid_conns.get(uid).cloned()
     }
 
-    fn get_uid_cids(&self, uid: &str) -> Vec<&str> {
-        let mut cids = vec![];
-        if let Some(cs) = self.uid_conns.get(uid) {
-            cids = cs.iter().map(|x| x.as_str()).collect();
-        }
-
-        cids
+    fn get_uid_cids(&self, uid: &str) -> Option<&HashSet<String>> {
+        self.uid_conns.get(uid)
     }
 
     fn get_room(&self, room: &str) -> Option<&HashMap<String, Rc<Conn>>> {
@@ -304,11 +303,11 @@ impl Hub {
 
         let room_id = room_id.unwrap();
 
-        let conn = self.get_conn(cid);
+        let conn = self.get_conn_clone(cid);
         if conn.is_none() {
             return;
         }
-        let conn = conn.unwrap().clone();
+        let conn = conn.unwrap();
 
         debug!(
             "conn join room, uid: {}, sid: {}, room: {}",
@@ -345,12 +344,12 @@ impl Hub {
     }
 
     fn join_service(&mut self, cid: &str, service: &str) -> bool {
-        let conn = self.get_conn(cid);
+        let conn = self.get_conn_clone(cid);
         if conn.is_none() {
             return false;
         }
 
-        let conn = conn.unwrap().clone();
+        let conn = conn.unwrap();
         if let Some(services) = self.services.get_mut(service) {
             if !services.contains_key(cid) {
                 services.insert(cid.to_string(), conn.clone());
@@ -576,6 +575,11 @@ impl Hub {
     ) -> u64 {
         let mut n: u64 = 0;
         let cids = self.get_uid_cids(uid);
+        if cids.is_none() {
+            return 0;
+        }
+
+        let cids = cids.unwrap();
         if cids.len() == 1 {
             if self.send_conn_biz_msg(cids[0], None, msg) {
                 n += 1;
@@ -740,7 +744,13 @@ impl Hub {
     }
 
     fn handle_uid_join_service(&mut self, uid: &str, msg: &HubJoinServiceMsg) {
-        for cid in self.get_uid_cids(uid) {
+        let cids = self.get_uid_cids(uid);
+        if cids.is_none() {
+            return;
+        }
+
+        let cids = cids.unwrap();
+        for cid in cids {
             self.handle_conn_join_service(cid, msg);
         }
     }
