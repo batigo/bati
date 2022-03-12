@@ -1,10 +1,10 @@
+use crate::conn_proto::*;
 use crate::const_proto::*;
 use crate::encoding::*;
 use crate::hub_proto::*;
 use crate::metric;
 use crate::metric_proto::*;
 use crate::pilot_proto::*;
-use crate::conn_proto::*;
 use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
@@ -47,11 +47,7 @@ impl Conn {
 
 impl std::fmt::Display for Conn {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(
-            f,
-            "conn, id: {}, endcode: {}",
-            self.addr.id, self.encoder
-        )
+        write!(f, "conn, id: {}, endcode: {}", self.addr.id, self.encoder)
     }
 }
 
@@ -130,9 +126,7 @@ impl Hub {
                 debug!("recv Session2HubMsg in hub-{}: {}", self.ix, msg);
                 match msg {
                     Conn2HubMsg::Register(msg) => self.handle_conn_register_msg(msg).await,
-                    Conn2HubMsg::Unregister(msg) => {
-                        self.handle_conn_unregister_msg(msg).await
-                    }
+                    Conn2HubMsg::Unregister(msg) => self.handle_conn_unregister_msg(msg).await,
                 }
             }
             HubMessage::FromPilot(msg) => {
@@ -156,7 +150,7 @@ impl Hub {
                 Timer2HubMsg::MetricStat => self.do_stats().await,
             },
             HubMessage::FromTester(mut msg) => {
-                let mut data = HubDataQueryData{
+                let mut data = HubDataQueryData {
                     conns: Default::default(),
                     rooms: Default::default(),
                     conn_rooms: self.conn_rooms.clone(),
@@ -291,7 +285,7 @@ impl Hub {
         let room_id = ServiceRoom::gen_room_id(service, room);
         if room_id.is_err() {
             error!(
-                "recv bad join room data, sid: {}, channel: {}, room: {}, err: {}",
+                "recv bad join room data, sid: {}, : {}, room: {}, err: {}",
                 cid,
                 service,
                 room,
@@ -368,7 +362,7 @@ impl Hub {
     fn quit_service(&mut self, cid: &str, service: &str) -> bool {
         let quited = match self.services.get_mut(service) {
             Some(conns) => {
-                debug!("conn quit service, sid: {}, channel: {}", cid, service);
+                debug!("conn quit service, sid: {}, : {}", cid, service);
                 conns.remove(cid);
                 if conns.len() == 0 {
                     self.services.remove(service);
@@ -388,11 +382,15 @@ impl Hub {
     async fn handle_conn_register_msg(&mut self, msg: ConnRegMsg) {
         if self.conns.contains_key(&msg.cid) {
             warn!("conn re-register: {}", msg.cid);
-            return
+            return;
         }
 
-        let ConnRegMsg{
-            cid,   uid, encoder, dt, addr
+        let ConnRegMsg {
+            cid,
+            uid,
+            encoder,
+            dt,
+            addr,
         } = msg;
 
         debug!("new conn registered in hub-{}: {}", self.ix, cid);
@@ -400,7 +398,8 @@ impl Hub {
         self.add_uid(&uid, &cid);
 
         let conn = Rc::new(Conn {
-            uid, addr,
+            uid,
+            addr,
             encoder: encoder.clone(),
         });
         self.conns.insert(cid, conn);
@@ -447,20 +446,21 @@ impl Hub {
                 if !conf.enable_close_notify {
                     continue;
                 }
-                let mut service_msg = lib::ServiceMsg::new();
-                service_msg.cid = Some(msg.cid.clone());
-                service_msg.typ = lib::CHAN_MSG_TYPE_CONN_QUIT;
-                service_msg.uid = Some(msg.uid.clone());
-                service_msg.cid = Some(msg.cid.clone());
-                service_msg.ip = msg.ip.clone();
+                let bati_msg = lib::BatiMsg::new(
+                    lib::BATI_MSG_TYPE_CONN_QUIT,
+                    msg.cid.clone(),
+                    msg.uid.clone(),
+                    msg.ip.clone(),
+                    None,
+                );
                 debug!(
-                    "send client quit msg to channel: {} - {:?}",
-                    service, service_msg
+                    "send client quit msg to service: {} - {:?}",
+                    service, bati_msg
                 );
                 self.pilot
                     .send_hub_msg(Hub2PilotMsg::BizMsg(PilotServiceBizMsg {
-                        service: service,
-                        data: bytes::Bytes::from(serde_json::to_vec(&service_msg).unwrap()),
+                        service,
+                        data: bytes::Bytes::from(serde_json::to_vec(&bati_msg).unwrap()),
                     }))
                     .await
                     .unwrap_or_else(|e| {
@@ -482,9 +482,7 @@ impl Hub {
         if let Some(session) = self.get_conn(&cid) {
             match msg.data.get_data_with_encoder(&session.encoder) {
                 Ok(data) => {
-                    session
-                        .send_conn_msg(&cid, Hub2ConnMsg::BIZ(data))
-                        .await;
+                    session.send_conn_msg(&cid, Hub2ConnMsg::BIZ(data)).await;
                     metric::inc_send_msg(msg.service.as_ref().unwrap_or(&"x".to_string()), 1);
                 }
                 Err(e) => {
@@ -505,20 +503,18 @@ impl Hub {
     async fn handle_room_biz_msg(&mut self, msg: HubServiceBizMsg) {
         debug!("handle room biz msg: {}", msg.id);
         if msg.service.is_none() || msg.room.is_none() {
-            warn!("bad msg: channel or room is empty - {}", msg.id);
+            warn!("bad msg: service or room is empty - {}", msg.id);
             return;
         }
 
         if let Ok(ref rid) =
             ServiceRoom::gen_room_id(msg.service.as_ref().unwrap(), msg.room.as_ref().unwrap())
         {
-            return self
-                .broadcast_service_bizmsg(msg, self.get_room(rid))
-                .await;
+            return self.broadcast_service_bizmsg(msg, self.get_room(rid)).await;
         }
 
         warn!(
-            "bad service room name, msgid: {}, channel: {}, room: {}",
+            "bad service room name, msgid: {}, service: {}, room: {}",
             msg.id,
             msg.service.unwrap_or("x".to_string()),
             msg.room.unwrap_or("x".to_string())
@@ -560,9 +556,7 @@ impl Hub {
                         );
                     }
                     Ok(data) => {
-                        conn
-                            .send_conn_msg(sid, Hub2ConnMsg::BIZ(data))
-                            .await;
+                        conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
                         send_count += 1;
                     }
                 }
@@ -600,9 +594,7 @@ impl Hub {
                     );
                 }
                 Ok(data) => {
-                    conn
-                        .send_conn_msg(sid, Hub2ConnMsg::BIZ(data))
-                        .await;
+                    conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
                     send_count += 1;
                 }
             }
@@ -703,14 +695,4 @@ impl Hub {
 #[cfg(test)]
 mod test {
     use super::*;
-
-    struct AllSenders {
-        hub_sender: HubSender,
-        pilot_sender: PilotSender,
-    }
-
-    fn async_env_prepare()  {
-
-    }
-
 }

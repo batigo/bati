@@ -4,15 +4,15 @@ use log::{debug, error, info, warn};
 use ntex::{rt, util::Bytes};
 use std::collections::HashMap;
 
+use crate::conn_proto::*;
 use crate::encoding::*;
 use crate::hub_proto::*;
 use crate::metric;
 use crate::pilot_proto::*;
-use crate::conn_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
 use bati_lib::service_msg::*;
-use bati_lib::{get_now_milli, ServiceConf, ServiceData, ServiceMsg, Postman};
+use bati_lib::{get_now_milli, Postman, ServiceConf, ServiceData, ServiceMsg};
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -69,7 +69,10 @@ impl Pilot {
         match msg {
             PilotMessage::FromConn(msg) => {
                 debug!("recv PilotMessage::FromConn msg: {:?}", msg);
-                let  PilotServiceBizMsg{ service: channel, data } = msg;
+                let PilotServiceBizMsg {
+                    service: channel,
+                    data,
+                } = msg;
                 self.send_postman_msg(
                     channel,
                     lib::PostmanMsg {
@@ -84,12 +87,15 @@ impl Pilot {
                 debug!("recv PilotMessage::FromHub: {:?}", msg);
                 match msg {
                     Hub2PilotMsg::BizMsg(msg) => {
-                        let PilotServiceBizMsg { service: channel, data } = msg;
+                        let PilotServiceBizMsg {
+                            service: channel,
+                            data,
+                        } = msg;
                         self.send_postman_msg(
                             channel,
                             lib::PostmanMsg {
                                 data,
-                                service: None
+                                service: None,
                             },
                         )
                         .await;
@@ -206,21 +212,21 @@ impl Pilot {
                 }
 
                 match msg.typ {
-                    CHAN_MSG_TYPE_REG_SERVICE => self.handle_join_service_msg(&mut msg).await,
-                    CHAN_MSG_TYPE_UNREG_ROOM | CHAN_MSG_TYPE_UNREG_SERVICE => {
+                    SERVICE_MSG_TYPE_REG_SERVICE => self.handle_join_service_msg(&mut msg).await,
+                    SERVICE_MSG_TYPE_UNREG_ROOM | SERVICE_MSG_TYPE_UNREG_SERVICE => {
                         self.handle_leave_room_msg(&mut msg).await
                     }
                     SERVICE_MSG_TYPE_CONN
-                    | CHAN_MSG_TYPE_BROADCAST
-                    | CHAN_MSG_TYPE_SERVICE
-                    | CHAN_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
+                    | SERVICE_MSG_TYPE_BROADCAST
+                    | SERVICE_MSG_TYPE_SERVICE
+                    | SERVICE_MSG_TYPE_ROOM_USERS => self.handle_biz_msg(&mut msg).await,
                     _ => {
                         warn!("bad service msg type: {}", msg.typ);
                     }
                 }
             }
             PilotMessage::FromTester(mut msg) => {
-                let mut data = PilotQueryData{
+                let mut data = PilotQueryData {
                     hubs: self.hubs.clone(),
                     postmen: HashMap::new(),
                     encoders: self.encoders.clone(),
@@ -376,7 +382,7 @@ impl Pilot {
                     return;
                 }
             }
-            CHAN_MSG_TYPE_SERVICE => {
+            SERVICE_MSG_TYPE_SERVICE => {
                 biz_msg.typ = ServiceBizMsgType::Service;
                 biz_msg.service = cmsg.service_id.take();
                 if biz_msg.service.is_none() {
@@ -387,13 +393,13 @@ impl Pilot {
                 biz_msg.blacks = msg.exclude_uids.take();
                 biz_msg.whites = msg.include_uids.take();
             }
-            CHAN_MSG_TYPE_BROADCAST => {
+            SERVICE_MSG_TYPE_BROADCAST => {
                 biz_msg.typ = ServiceBizMsgType::Broadcast;
                 biz_msg.ratio = self.get_broadcast_ratio(&msg);
                 biz_msg.blacks = msg.exclude_uids.take();
                 biz_msg.whites = msg.include_uids.take();
             }
-            CHAN_MSG_TYPE_ROOM_USERS => {
+            SERVICE_MSG_TYPE_ROOM_USERS => {
                 biz_msg.typ = ServiceBizMsgType::Room;
                 biz_msg.service = cmsg.service_id.take();
                 biz_msg.room = msg.room.take();

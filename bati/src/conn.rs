@@ -1,9 +1,9 @@
+use crate::conn_proto::*;
 use crate::const_proto::*;
 use crate::encoding::*;
 use crate::hub_proto::*;
 use crate::metric;
 use crate::pilot_proto::*;
-use crate::conn_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
 use log::{debug, error, info, warn};
@@ -162,12 +162,10 @@ impl Conn {
     async fn send_client_msg(&self, msg: WsMessage) -> bool {
         let mut ok = true;
         if let Some(ws) = self.ws_sink.as_ref() {
-            ws.send(msg)
-                .await
-                .unwrap_or_else(|e| {
-                    error!("failed to send msg to client: {} - {:?}", self.id, e);
-                    ok = false;
-                });
+            ws.send(msg).await.unwrap_or_else(|e| {
+                error!("failed to send msg to client: {} - {:?}", self.id, e);
+                ok = false;
+            });
         }
         ok
     }
@@ -299,15 +297,17 @@ impl Conn {
 
     async fn proc_biz_msg(&mut self, msg: &mut ClientMsg) {
         debug!("proc biz msg: {}", msg.id);
-        let mut channel_msg = lib::ServiceMsg::new();
-        channel_msg.data = msg.data.take();
-        channel_msg.cid = Some(self.id.clone());
-        channel_msg.ip = Some(self.ip.clone());
-        channel_msg.uid = Some(self.uid.clone());
+        let channel_msg = lib::BatiMsg::new(
+            lib::BATI_MSG_TYPE_BIZ,
+            self.id.clone(),
+            self.uid.clone(),
+            Some(self.ip.clone()),
+            msg.data.take(),
+        );
         match serde_json::to_vec(&channel_msg) {
             Ok(bs) => {
                 self.pilot
-                    .send_conn_msg( PilotServiceBizMsg {
+                    .send_conn_msg(PilotServiceBizMsg {
                         service: msg.service_id.take().unwrap(),
                         data: bytes::Bytes::from(bs),
                     })

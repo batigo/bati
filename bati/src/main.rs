@@ -11,20 +11,20 @@ use std::io;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub mod cfg;
-pub mod service_finder;
+mod cfg;
+mod conn;
+mod conn_proto;
 mod const_proto;
-pub mod encoding;
-pub mod hub;
-pub mod hub_proto;
-pub mod metric;
+mod encoding;
+mod hub;
+mod hub_proto;
+mod metric;
 mod metric_proto;
-pub mod pilot;
-pub mod pilot_proto;
-pub mod conn;
-pub mod conn_proto;
+mod pilot;
+mod pilot_proto;
+mod service_finder;
 mod timer;
-pub mod utils;
+mod utils;
 
 #[macro_use]
 extern crate prometheus;
@@ -172,7 +172,13 @@ async fn websocket_service(
             sender
                 .send_master_msg(conn_proto::Master2ConnMsg::Frame(frame))
                 .await
-                .unwrap_or_else(|e| error!("failed to send msg to conn: {} - {} ", sender.id,  e.to_string()));
+                .unwrap_or_else(|e| {
+                    error!(
+                        "failed to send msg to conn: {} - {} ",
+                        sender.id,
+                        e.to_string()
+                    )
+                });
         });
 
         ready(Ok(None))
@@ -181,7 +187,8 @@ async fn websocket_service(
         rt::spawn(async move {
             conn_sender
                 .send_master_msg(conn_proto::Master2ConnMsg::Shutdown)
-                .await.unwrap_or(());
+                .await
+                .unwrap_or(());
         });
     }))
 }
