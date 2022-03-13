@@ -283,6 +283,7 @@ impl Hub {
     }
 
     fn join_room(&mut self, cid: &str, service: &str, room: &str, multi_rooms: bool) {
+        warn!("++++ handle join room: {}, {}, {}", cid, service, room);
         let room_id = ServiceRoom::gen_room_id(service, room);
         if room_id.is_err() {
             error!(
@@ -299,12 +300,13 @@ impl Hub {
 
         let conn = self.get_conn_clone(cid);
         if conn.is_none() {
+            warn!("++++222 handle join room: {}, {}, {}", cid, service, room);
             return;
         }
         let conn = conn.unwrap();
 
-        debug!(
-            "conn join room, uid: {}, sid: {}, room: {}",
+        warn!(
+            "======= conn join room, uid: {}, sid: {}, room: {}",
             conn.uid, cid, room_id
         );
 
@@ -323,6 +325,11 @@ impl Hub {
             .entry(room_id)
             .or_insert_with(HashMap::new)
             .insert(cid.to_owned().to_string(), conn.clone());
+
+        warn!(
+            "====++++  {:?}",
+            self.rooms.get(&room_id).unwrap().get(cid).is_some()
+        );
     }
 
     fn quit_room(&mut self, cid: &str, room: &str) {
@@ -709,6 +716,7 @@ impl Hub {
 
     fn handle_conn_join_service(&mut self, cid: &str, msg: &HubJoinServiceMsg) {
         if !self.conns.contains_key(cid) {
+            warn!("++++ conn not found in service join msg: {:?}", msg);
             return;
         }
         if msg.join_service {
