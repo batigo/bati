@@ -283,7 +283,7 @@ impl Hub {
     }
 
     fn join_room(&mut self, cid: &str, service: &str, room: &str, multi_rooms: bool) {
-        warn!("++++ handle join room: {}, {}, {}", cid, service, room);
+        debug!("handle join room: {}, {}, {}", cid, service, room);
         let room_id = ServiceRoom::gen_room_id(service, room);
         if room_id.is_err() {
             error!(
@@ -300,12 +300,11 @@ impl Hub {
 
         let conn = self.get_conn_clone(cid);
         if conn.is_none() {
-            warn!("++++222 handle join room: {}, {}, {}", cid, service, room);
             return;
         }
         let conn = conn.unwrap();
 
-        warn!(
+        debug!(
             "======= conn join room, uid: {}, sid: {}, room: {}",
             conn.uid, cid, room_id
         );
@@ -320,21 +319,12 @@ impl Hub {
             quit_rooms.iter().for_each(|room| self.quit_room(cid, room));
         }
 
-        warn!(
-            "====++++  {:?}",
-            self.rooms.get(&room_id).unwrap().get(cid).is_some()
-        );
         let rid = room_id.clone();
         self.add_conn_room(cid, &room_id);
         self.rooms
             .entry(room_id)
             .or_insert_with(HashMap::new)
             .insert(cid.to_owned().to_string(), conn.clone());
-
-        warn!(
-            "====++++  {:?}",
-            self.rooms.get(&rid).unwrap().get(cid).is_some()
-        );
     }
 
     fn quit_room(&mut self, cid: &str, room: &str) {
@@ -460,6 +450,7 @@ impl Hub {
                     continue;
                 }
                 let bati_msg = lib::BatiMsg::new(
+                    None,
                     lib::BATI_MSG_TYPE_CONN_QUIT,
                     msg.cid.clone(),
                     msg.uid.clone(),

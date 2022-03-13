@@ -148,19 +148,26 @@ impl fmt::Display for BatiMsg {
 
 impl BatiMsg {
     pub fn new(
+        id: Option<String>,
         typ: BatiMsgType,
         cid: String,
         uid: String,
         ip: Option<String>,
         data: Option<Box<serde_json::value::RawValue>>,
     ) -> Self {
+        let mid;
+        if let Some(id) = id {
+            mid = id
+        } else {
+            mid = gen_msg_id()
+        }
         BatiMsg {
+            id: mid,
             typ,
             cid,
             uid,
             ip,
             data,
-            id: gen_msg_id(),
             ts: get_now_milli(),
         }
     }

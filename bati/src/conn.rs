@@ -239,7 +239,7 @@ impl Conn {
                     .unwrap_or_else(|e| error!("failed to send cmsg: {}", e));
             }
             CMSG_TYPE_INIT => self.proc_init_cmsg(&msg).await,
-            CMSG_TYPE_BIZ => self.proc_biz_msg(&mut msg).await,
+            CMSG_TYPE_BIZ => self.proc_biz_msg(msg).await,
             _ => {}
         }
 
@@ -296,9 +296,12 @@ impl Conn {
         }
     }
 
-    async fn proc_biz_msg(&mut self, msg: &mut ClientMsg) {
+    async fn proc_biz_msg(&mut self, mut msg: ClientMsg) {
+        let service_id = msg.service_id.take().unwrap();
+
         debug!("proc biz msg: {}", msg.id);
         let channel_msg = lib::BatiMsg::new(
+            Some(msg.id.clone()),
             lib::BATI_MSG_TYPE_BIZ,
             self.id.clone(),
             self.uid.clone(),
@@ -309,7 +312,7 @@ impl Conn {
             Ok(bs) => {
                 self.pilot
                     .send_conn_msg(PilotServiceBizMsg {
-                        service: msg.service_id.take().unwrap(),
+                        service: service_id,
                         data: Bytes::from(bs),
                     })
                     .await

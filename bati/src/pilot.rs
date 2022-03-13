@@ -354,7 +354,7 @@ impl Pilot {
 
         let mut biz_msg = HubServiceBizMsg {
             id,
-            typ,
+            typ: biz_data.typ,
             cids: biz_data.cids.take(),
             uids: biz_data.uids.take(),
             service: Some(service),
