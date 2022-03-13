@@ -181,7 +181,7 @@ impl Pilot {
             }
 
             PilotMessage::FromPostman(msg) => {
-                debug!("recv service msg in pilot: {} - {}", msg.service, msg.id);
+                warn!("recv service msg in pilot: {} - {}", msg.service, msg.id);
 
                 if msg.ts > 0 {
                     metric::update_service_msg_latency(&msg.service, get_now_milli() - msg.ts);
@@ -256,13 +256,15 @@ impl Pilot {
     }
 
     async fn handle_join_service_msg(&self, mut msg: ServiceMsg) {
-        debug!("handle join service msg: {:?}", msg);
+        warn!("handle join service msg: {:?}", msg);
         if msg.join_data.is_none() {
+            warn!("==== join data empty: {:?}", msg);
             return;
         }
 
         let mut join_data = msg.join_data.take().unwrap();
         if join_data.cid.is_none() && join_data.uid.is_none() {
+            warn!("==== join data abnormal: {:?}", msg);
             return;
         }
 
@@ -273,6 +275,7 @@ impl Pilot {
 
         let cp = self.postmen.get(service);
         if cp.is_none() {
+            warn!("==== service postman not found for {}", service);
             return;
         }
 

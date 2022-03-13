@@ -61,7 +61,7 @@ pub enum Pilot2HubMsg {
 #[derive(Clone, Default, Debug)]
 pub struct HubServiceBizMsg {
     pub id: String,
-    pub typ: lib::BatiMsgType,
+    pub typ: lib::ServiceMsgType,
     pub cids: Option<Vec<String>>,
     pub uids: Option<Vec<String>>,
     pub service: Option<String>,

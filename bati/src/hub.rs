@@ -132,7 +132,7 @@ impl Hub {
                 }
             }
             HubMessage::FromPilot(msg) => {
-                debug!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
+                warn!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
                 match msg {
                     Pilot2HubMsg::Biz(msg) => self.handle_biz_msg(msg).await,
                     Pilot2HubMsg::JoinService(msg) => self.handle_join_service_msg(msg).await,
@@ -699,6 +699,7 @@ impl Hub {
     }
 
     async fn handle_join_service_msg(&mut self, msg: HubJoinServiceMsg) {
+        warn!("recv join service msg: {:?}", msg);
         if let Some(cid) = msg.cid.as_ref() {
             self.handle_conn_join_service(cid, &msg);
         } else if let Some(uid) = msg.uid.as_ref() {
