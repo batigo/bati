@@ -43,14 +43,18 @@ async fn main() {
     let config = config.unwrap();
     init_logger(config.log.clone());
 
-    let cpus = num_cpus::get();
+    let mut workers = config.server.workers;
+    if workers == 0 {
+        workers = num_cpus::get();
+    }
+
     let mut chan_finder = service_finder::ServiceFinder::new(config.service_registry.clone());
 
-    let metrics_collecor = metric::MetricCollector::new(cpus).start();
+    let metrics_collecor = metric::MetricCollector::new(workers).start();
 
     let mut pilots = vec![];
-    for ix in 0..cpus {
-        let pilot = pilot::Pilot::new(ix, cpus).start();
+    for ix in 0..workers {
+        let pilot = pilot::Pilot::new(ix, workers).start();
         chan_finder.add_pilot(pilot.clone());
         pilots.push(pilot);
     }
@@ -94,6 +98,7 @@ async fn main() {
             .service(web::resource("/healthcheck").to(healthcheck_handler))
             .service(web::resource("/metrics").to(metrics_handler))
     })
+    .workers(workers)
     .bind(&config.server.addr);
 
     match server {

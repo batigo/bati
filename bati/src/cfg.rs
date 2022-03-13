@@ -12,6 +12,7 @@ pub struct Cfg {
 #[derive(Deserialize, Clone)]
 pub struct ServerCfg {
     pub addr: String,
+    pub workers: usize,
 }
 
 #[derive(Deserialize, Clone)]

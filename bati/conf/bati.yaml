@@ -1,6 +1,7 @@
 
 server:
     addr: 0.0.0.0:9873
+    workers: 1
 
 log:
     level: info
