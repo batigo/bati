@@ -54,7 +54,7 @@ pub struct BizData {
     pub cids: Option<Vec<String>>,
     pub uids: Option<Vec<String>>,
     pub rid: Option<String>,
-    pub broadcast_rate: Option<u8>,
+    pub broadcast_ratio: Option<u8>,
     pub black_uids: Option<Vec<String>>,
     pub white_uids: Option<Vec<String>>,
     pub data: Option<Box<serde_json::value::RawValue>>,
@@ -125,9 +125,8 @@ pub const BATI_MSG_TYPE_CONN_QUIT: BatiMsgType = 2;
 #[serde(default)]
 pub struct BatiMsg {
     pub id: String,
-    #[serde(rename = "t")]
+    #[serde(rename = "type")]
     pub typ: BatiMsgType,
-    #[serde(rename = "d")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<Box<serde_json::value::RawValue>>,
     pub cid: String,

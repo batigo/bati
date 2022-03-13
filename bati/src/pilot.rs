@@ -358,7 +358,7 @@ impl Pilot {
             room: biz_msg.room.take(),
             blacks: biz_data.black_uids.take(),
             whites: biz_data.white_uids.take(),
-            ratio: biz_data.broadcast_rate.take(),
+            ratio: biz_data.broadcast_ratio.take(),
             data: Default::default(),
         };
 

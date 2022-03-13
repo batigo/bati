@@ -46,7 +46,7 @@ impl Postman {
             group_id = format!("{}_{}", group_id, local_id.unwrap());
         }
 
-        let topic = format!("{}{}", conf.name, typ.read_channel_sufix());
+        let topic = format!("bati_{}{}", conf.name, typ.read_channel_sufix());
         let kafka_consumer = KafkaPostman::new(
             kafka_conf.host_ports.clone(),
             topic,
@@ -56,7 +56,7 @@ impl Postman {
             None,
         );
 
-        let topic = format!("{}{}", conf.name, typ.writer_channel_sufix());
+        let topic = format!("bati_{}{}", conf.name, typ.writer_channel_sufix());
         let kafka_producer = KafkaPostman::new(
             kafka_conf.host_ports,
             topic,
