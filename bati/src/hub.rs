@@ -320,6 +320,11 @@ impl Hub {
             quit_rooms.iter().for_each(|room| self.quit_room(cid, room));
         }
 
+        warn!(
+            "====++++  {:?}",
+            self.rooms.get(&room_id).unwrap().get(cid).is_some()
+        );
+        let rid = room_id.clone();
         self.add_conn_room(cid, &room_id);
         self.rooms
             .entry(room_id)
@@ -328,7 +333,7 @@ impl Hub {
 
         warn!(
             "====++++  {:?}",
-            self.rooms.get(&room_id).unwrap().get(cid).is_some()
+            self.rooms.get(&rid).unwrap().get(cid).is_some()
         );
     }
 
