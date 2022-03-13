@@ -40,9 +40,10 @@ struct Conn {
 
 impl Conn {
     async fn send_conn_msg(&self, sid: &str, msg: Hub2ConnMsg) {
-        self.addr.send_hub_msg(msg).await.unwrap_or_else(|e| {
+        if let Err(e) = self.addr.send_hub_msg(msg).await {
             warn!("failed to send conn biz msg: {} - {}", sid, e);
-        });
+            self.addr.send_hub_msg(Hub2ConnMsg::QUIT).await;
+        }
     }
 }
 
