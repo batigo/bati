@@ -8,6 +8,7 @@ use crate::pilot_proto::*;
 use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
+use ntex::util::Bytes;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -460,7 +461,7 @@ impl Hub {
                 self.pilot
                     .send_hub_msg(Hub2PilotMsg::BizMsg(PilotServiceBizMsg {
                         service,
-                        data: bytes::Bytes::from(serde_json::to_vec(&bati_msg).unwrap()),
+                        data: Bytes::from(serde_json::to_vec(&bati_msg).unwrap()),
                     }))
                     .await
                     .unwrap_or_else(|e| {

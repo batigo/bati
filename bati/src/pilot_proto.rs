@@ -2,6 +2,7 @@ use crate::encoding::*;
 use crate::hub_proto::HubSender;
 use bati_lib::{ServiceConf, ServiceMsg};
 use futures::{channel::mpsc, SinkExt, StreamExt};
+use ntex::util::Bytes;
 use std::collections::*;
 
 type SendResult = Result<(), mpsc::SendError>;
@@ -73,7 +74,7 @@ pub enum Hub2PilotMsg {
 #[derive(Debug, Clone)]
 pub struct PilotServiceBizMsg {
     pub service: String,
-    pub data: bytes::Bytes,
+    pub data: Bytes,
 }
 
 // only for test

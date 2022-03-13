@@ -310,7 +310,7 @@ impl Conn {
                 self.pilot
                     .send_conn_msg(PilotServiceBizMsg {
                         service: msg.service_id.take().unwrap(),
-                        data: bytes::Bytes::from(bs),
+                        data: Bytes::from(bs),
                     })
                     .await
                     .unwrap_or_else(|e| {

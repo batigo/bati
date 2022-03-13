@@ -1,6 +1,7 @@
 use crate::kafka::KafkaPostman;
 use crate::{ServiceConf, ServiceMsg};
 use futures::channel::mpsc::{Receiver, Sender};
+use ntex::util::Bytes;
 use std::error::Error;
 
 pub struct Postman {
@@ -113,7 +114,7 @@ pub enum PostmanMsg {
 
 #[derive(Clone, Debug, Default)]
 pub struct PostmanBatiMsg {
-    pub data: bytes::Bytes,
+    pub data: Bytes,
     pub service: Option<String>,
 }
 
