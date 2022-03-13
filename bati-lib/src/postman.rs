@@ -1,5 +1,5 @@
 use crate::kafka::KafkaPostman;
-use crate::{ServiceConf, ServiceMsg2};
+use crate::{ServiceConf, ServiceMsg};
 use futures::channel::mpsc::{Receiver, Sender};
 use std::error::Error;
 
@@ -108,7 +108,7 @@ impl PostmanType {
 
 pub enum PostmanMsg {
     Upper(PostmanBatiMsg),
-    Downer(ServiceMsg2),
+    Downer(ServiceMsg),
 }
 
 #[derive(Clone, Debug, Default)]

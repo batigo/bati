@@ -1,4 +1,4 @@
-use crate::{PostmanMsg, ServiceMsg2};
+use crate::{PostmanMsg, ServiceMsg};
 use futures::channel::mpsc::{Receiver, Sender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
@@ -103,11 +103,11 @@ async fn run_producer(topic: String, mut recevier: Receiver<PostmanMsg>, produce
     warn!("kafka producer run for: {}", topic);
     loop {
         match recevier.next().await {
-            Some(PostmanMsg::Upper(mut msg)) => {
+            Some(PostmanMsg::Upper(msg)) => {
                 debug!(
                     "recv pilot msg in kafka producer: {} - {}",
                     topic,
-                    String::from_utf8(msg.data.as_ref()).unwrap()
+                    String::from_utf8(msg.data.as_ref().to_vec()).unwrap()
                 );
                 let rec = FutureRecord::to(&topic)
                     .payload(msg.data.to_bytes())
@@ -139,7 +139,7 @@ async fn run_consumer(
         match consumer.recv().await {
             Ok(msg) => match msg.payload() {
                 Some(bs) => {
-                    let mut msg: serde_json::Result<ServiceMsg2> = serde_json::from_slice(bs);
+                    let msg: serde_json::Result<ServiceMsg> = serde_json::from_slice(bs);
                     if msg.is_err() {
                         error!(
                             "recv bad msg from service: {}, failed to parse msg: {}",

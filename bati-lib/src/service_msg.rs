@@ -7,57 +7,10 @@ pub type ServiceMsgType = u8;
 pub const SERVICE_MSG_TYPE_CONN_JOIN: ServiceMsgType = 1;
 pub const SERVICE_MSG_TYPE_CONN_QUIT: ServiceMsgType = 2;
 pub const SERVICE_MSG_TYPE_BIZ: ServiceMsgType = 3;
-pub const SERVICE_MSG_TYPE_SERVICE: ServiceMsgType = 11;
-pub const SERVICE_MSG_TYPE_BROADCAST: ServiceMsgType = 12;
-pub const SERVICE_MSG_TYPE_ROOM_USERS: ServiceMsgType = 13;
 
 #[derive(Deserialize, Default, Clone, Debug)]
 #[serde(default)]
 pub struct ServiceMsg {
-    pub id: String,
-    #[serde(rename = "t")]
-    pub typ: ServiceMsgType,
-    #[serde(rename = "d")]
-    pub data: Option<Box<serde_json::value::RawValue>>,
-    pub cid: Option<String>,
-    pub uid: Option<String>,
-    pub ip: Option<String>,
-    pub uids: Option<Vec<u64>>,
-    #[serde(rename = "sid")]
-    pub service: Option<String>,
-    #[serde(rename = "rid")]
-    pub room: Option<String>,
-    pub broadcast_rate: Option<i8>,
-    pub exclude_uids: Option<Vec<String>>,
-    pub include_uids: Option<Vec<String>>,
-    pub ts: u64,
-}
-
-impl fmt::Display for ServiceMsg {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "id: {}, type: {}, cid: {:?}, uid: {:?}, uids: {:?}, cid: {:?}, rid: {:?}, \
-            broadcast_rate: {:?}, exclude_mids: {:?}, include_mids: {:?}, ts:{:?}, data: {:?}",
-            self.id,
-            self.typ,
-            self.cid,
-            self.uid,
-            self.uids,
-            self.service,
-            self.room,
-            self.broadcast_rate,
-            self.exclude_uids,
-            self.include_uids,
-            self.ts,
-            self.data
-        )
-    }
-}
-
-#[derive(Deserialize, Default, Clone, Debug)]
-#[serde(default)]
-pub struct ServiceMsg2 {
     pub id: String,
     pub service: String,
     #[serde(rename = "type")]
@@ -90,10 +43,8 @@ type BizMsgType = u8;
 
 pub const BIZ_MSG_TYPE_USERS: BizMsgType = 1;
 pub const BIZ_MSG_TYPE_ROOM: BizMsgType = 2;
-pub const BIZ_MSG_TYPE_ROOM_USERS: BizMsgType = 3;
-pub const BIZ_MSG_TYPE_SERVICE: BizMsgType = 4;
-pub const BIZ_MSG_TYPE_SERVICE_USERS: BizMsgType = 5;
-pub const BIZ_MSG_TYPE_ALL: BizMsgType = 6;
+pub const BIZ_MSG_TYPE_SERVICE: BizMsgType = 3;
+pub const BIZ_MSG_TYPE_ALL: BizMsgType = 4;
 
 #[derive(Deserialize, Default, Clone, Debug)]
 #[serde(default)]
@@ -109,13 +60,13 @@ pub struct BizData {
     pub data: Option<Box<serde_json::value::RawValue>>,
 }
 
-impl fmt::Display for ServiceMsg2 {
+impl fmt::Display for ServiceMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "id: {}", self.id,)
     }
 }
 
-impl ServiceMsg2 {
+impl ServiceMsg {
     pub fn valiate(&self) -> Result<(), &'static str> {
         match self.typ {
             SERVICE_MSG_TYPE_CONN_JOIN => {
@@ -150,19 +101,6 @@ impl ServiceMsg2 {
                     BIZ_MSG_TYPE_ROOM => {
                         if data.rid.is_none() {
                             return Err("rid missing in room biz msg");
-                        }
-                    }
-                    BIZ_MSG_TYPE_ROOM_USERS => {
-                        if data.rid.is_none() {
-                            return Err("rid missing in room-users biz msg");
-                        }
-                        if data.cids.is_none() || data.uids.is_none() {
-                            return Err("both cids && uids missing in room-users biz msg");
-                        }
-                    }
-                    BIZ_MSG_TYPE_SERVICE_USERS => {
-                        if data.cids.is_none() || data.uids.is_none() {
-                            return Err("both cids && uids missing in service-users biz msg");
                         }
                     }
                     BIZ_MSG_TYPE_SERVICE | BIZ_MSG_TYPE_ALL => {}

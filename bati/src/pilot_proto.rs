@@ -1,6 +1,6 @@
 use crate::encoding::*;
 use crate::hub_proto::HubSender;
-use bati_lib::{PostmanMsg, ServiceConf, ServiceMsg2};
+use bati_lib::{ServiceConf, ServiceMsg};
 use futures::{channel::mpsc, SinkExt, StreamExt};
 use std::collections::*;
 
@@ -11,7 +11,7 @@ pub enum PilotMessage {
     FromHub(Hub2PilotMsg),
     FromMaster(PilotAddHubMsg),
     FromServiceFinder(ServiceConf),
-    FromPostman(ServiceMsg2),
+    FromPostman(ServiceMsg),
     FromTester(PilotQueryMsg),
 }
 
@@ -39,7 +39,7 @@ impl PilotSender {
         self.send(PilotMessage::FromServiceFinder(msg)).await
     }
 
-    pub async fn send_postman_msg(&mut self, msg: ServiceMsg2) -> SendResult {
+    pub async fn send_postman_msg(&mut self, msg: ServiceMsg) -> SendResult {
         self.send(PilotMessage::FromPostman(msg)).await
     }
 }

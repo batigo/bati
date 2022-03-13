@@ -134,13 +134,6 @@ impl Hub {
                 debug!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
                 match msg {
                     Pilot2HubMsg::Biz(msg) => self.handle_biz_msg(msg).await,
-                    // Pilot2HubMsg::Biz(msg) => match msg.typ {
-                    //     lib::BIZ_MSG_TYPE_USERS => self.handle_users_biz_msg(msg).await,
-                    //     ServiceBizMsgType::Users => self.handle_users_biz_msg(msg).await,
-                    //     ServiceBizMsgType::Room => self.handle_room_biz_msg(msg).await,
-                    //     ServiceBizMsgType::Service => self.handle_service_biz_msg(msg).await,
-                    //     ServiceBizMsgType::Broadcast => self.broadcast_bizmsg(msg).await,
-                    // },
                     Pilot2HubMsg::JoinService(msg) => self.handle_join_service_msg(msg).await,
                     Pilot2HubMsg::LeaveRoom(msg) => self.handle_leave_room_msg(msg).await,
                     Pilot2HubMsg::ServiceConf(conf) => {
@@ -477,11 +470,13 @@ impl Hub {
         }
     }
 
-    async fn handle_biz_msg(&mut self, mut msg: HubServiceBizMsg) {
+    async fn handle_biz_msg(&mut self, msg: HubServiceBizMsg) {
         match msg.typ {
-            lib::BIZ_MSG_TYPE_USERS => {
-                self.handle_users_biz_msg(msg).await;
-            }
+            lib::BIZ_MSG_TYPE_USERS => self.handle_users_biz_msg(msg).await,
+            lib::BIZ_MSG_TYPE_ROOM => self.handle_room_biz_msg(msg).await,
+            lib::BIZ_MSG_TYPE_SERVICE => self.handle_service_biz_msg(msg).await,
+            lib::BIZ_MSG_TYPE_ALL => self.broadcast_bizmsg(msg).await,
+            _ => {}
         }
         return;
     }
@@ -489,34 +484,18 @@ impl Hub {
     async fn handle_users_biz_msg(&mut self, mut msg: HubServiceBizMsg) {
         let cids = msg.cids.take();
         let uids = msg.uids.take();
-        let room = msg.room.take();
-        let service = msg.service.take();
         if cids.is_none() && uids.is_none() {
             return;
-        }
-
-        let mut rid: Option<String> = None;
-        if room.is_some() && service.is_some() {
-            let r = ServiceRoom::gen_room_id(service.as_ref().unwrap(), room.as_ref().unwrap());
-            if r.is_err() {
-                error!(
-                    "bad service&room name, service: {}, room: {}",
-                    service.unwrap(),
-                    room.unwrap()
-                );
-                return;
-            }
-            rid = Some(r.unwrap());
         }
 
         let mut send_count = 0;
         if uids.is_some() {
             for uid in uids.as_ref().unwrap() {
-                send_count += self.send_uid_biz_msg(uid, rid.as_ref(), &mut msg).await;
+                send_count += self.send_uid_biz_msg(uid, &mut msg, true).await;
             }
         } else {
             for cid in cids.as_ref().unwrap() {
-                send_count += self.send_conn_biz_msg(cid, rid.as_ref(), &mut msg);
+                send_count += self.send_conn_biz_msg(cid, &mut msg, true).await;
             }
         }
 
@@ -530,10 +509,10 @@ impl Hub {
     }
 
     async fn send_conn_biz_msg(
-        &mut self,
+        &self,
         cid: &str,
-        sp_rid: Option<&String>,
         msg: &mut HubServiceBizMsg,
+        fiter_service_room: bool,
     ) -> u64 {
         let conn = self.get_conn(cid);
         if conn.is_none() {
@@ -544,9 +523,13 @@ impl Hub {
             return 0;
         }
 
-        if let Some(rid) = sp_rid {
-            let conns = self.get_room(rid);
-            if conns.is_none() || !conns.unwrap().contains_key(cid) {
+        if fiter_service_room {
+            let conns;
+            match msg.room.as_ref() {
+                Some(rid) => conns = self.get_room(rid),
+                None => conns = self.get_service(msg.service.as_ref().unwrap()),
+            }
+            if conns.is_none() || !conns.as_ref().unwrap().contains_key(cid) {
                 return 0;
             }
         }
@@ -554,7 +537,7 @@ impl Hub {
         let conn = conn.unwrap();
         match msg.data.get_data_with_encoder(&conn.encoder) {
             Ok(data) => {
-                session.send_conn_msg(&cid, Hub2ConnMsg::BIZ(data)).await;
+                conn.send_conn_msg(&cid, Hub2ConnMsg::BIZ(data)).await;
                 1
             }
             Err(e) => {
@@ -570,53 +553,45 @@ impl Hub {
     async fn send_uid_biz_msg(
         &mut self,
         uid: &str,
-        sp_rid: Option<&String>,
         msg: &mut HubServiceBizMsg,
+        filter_service_room: bool,
     ) -> u64 {
         let mut n: u64 = 0;
-        let cids = self.get_uid_cids(uid);
+        let cids = self.get_uid_cids_clone(uid);
         if cids.is_none() {
             return 0;
         }
 
         let cids = cids.unwrap();
-        if cids.len() == 1 {
-            if self.send_conn_biz_msg(cids[0], None, msg) {
-                n += 1;
+        if !filter_service_room || msg.service.is_none() {
+            for cid in &cids {
+                n += self.send_conn_biz_msg(cid, msg, false).await;
             }
-        } else {
-            match sp_rid {
-                Some(rid) => {
-                    let conns = self.get_room(rid);
-                    if conns.is_none() {
-                        return 0;
-                    }
-                    let conns = conns.unwrap();
-                    for cid in cids {
-                        if !conns.contains_key(cid) {
-                            continue;
-                        }
-                        if self.send_conn_biz_msg(cid, None, msg).await {
-                            n += 1
-                        }
-                    }
-                }
-                Noene => {
-                    for cid in cids {
-                        if self.send_conn_biz_msg(cid, None, msg).await {
-                            n += 1
-                        }
-                    }
-                }
+            return n;
+        }
+
+        let conns;
+        match msg.room.as_ref() {
+            Some(rid) => conns = self.get_room(rid),
+            None => conns = self.get_service(msg.service.as_ref().unwrap()),
+        }
+        if conns.is_none() {
+            return 0;
+        }
+
+        let conns = conns.unwrap();
+        for cid in &cids {
+            if conns.contains_key(cid) {
+                n += self.send_conn_biz_msg(cid, msg, false).await;
             }
         }
-        n
+        return n;
     }
 
     async fn handle_room_biz_msg(&mut self, msg: HubServiceBizMsg) {
         debug!("handle room biz msg: {}", msg.id);
         if msg.service.is_none() || msg.room.is_none() {
-            warn!("bad msg: service or room is empty - {}", msg.id);
+            warn!("bad msg: service or room missing - {}", msg.id);
             return;
         }
 
@@ -636,8 +611,9 @@ impl Hub {
 
     async fn handle_service_biz_msg(&mut self, msg: HubServiceBizMsg) {
         debug!("handle service biz msg: {}", msg.id);
-        if msg.room.is_some() {
-            return self.handle_room_biz_msg(msg).await;
+        if msg.service.is_none() {
+            warn!("bad msg: service missing - {}", msg.id);
+            return;
         }
 
         let conns = self.get_service(msg.service.as_ref().unwrap());
@@ -744,13 +720,13 @@ impl Hub {
     }
 
     fn handle_uid_join_service(&mut self, uid: &str, msg: &HubJoinServiceMsg) {
-        let cids = self.get_uid_cids(uid);
+        let cids = self.get_uid_cids_clone(uid);
         if cids.is_none() {
             return;
         }
 
         let cids = cids.unwrap();
-        for cid in cids {
+        for cid in &cids {
             self.handle_conn_join_service(cid, msg);
         }
     }
@@ -762,21 +738,29 @@ impl Hub {
     }
 
     async fn handle_leave_room_msg(&mut self, msg: HubLeaveRoomMsg) {
-        if let Some(ref cid) = msg.cid {
-            self.handle_conn_leave_room(cid, &msg.service, &msg.room);
+        if let Some(cid) = msg.cid.as_ref() {
+            if let Some(rooms) = msg.rooms.as_ref() {
+                for room in rooms {
+                    self.handle_conn_leave_room(cid, &msg.service, room);
+                }
+            }
             if msg.quit_service {
                 self.quit_service(cid, &msg.service);
             }
         }
 
-        if msg.uid.is_some() {
-            if let Some(sids) = self.get_uid_cids_clone(msg.uid.as_ref().unwrap()) {
-                sids.iter().for_each(|cid| {
-                    self.handle_conn_leave_room(cid, &msg.service, &msg.room);
+        if let Some(uid) = msg.uid.as_ref() {
+            if let Some(cids) = self.get_uid_cids_clone(uid) {
+                for cid in &cids {
+                    if let Some(rooms) = msg.rooms.as_ref() {
+                        for room in rooms {
+                            self.handle_conn_leave_room(cid, &msg.service, room);
+                        }
+                    }
                     if msg.quit_service {
                         self.quit_service(cid, &msg.service);
                     }
-                });
+                }
             }
         }
     }

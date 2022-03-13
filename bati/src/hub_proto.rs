@@ -73,20 +73,6 @@ pub struct HubServiceBizMsg {
     pub data: ServiceBizData,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum ServiceBizMsgType {
-    Users,
-    Room,
-    Service,
-    Broadcast,
-}
-
-impl Default for ServiceBizMsgType {
-    fn default() -> Self {
-        ServiceBizMsgType::Users
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct ServiceBizData {
     raw_data: Bytes,
@@ -171,7 +157,7 @@ pub struct HubLeaveRoomMsg {
     pub uid: Option<String>,
     pub cid: Option<String>,
     pub service: String,
-    pub room: String,
+    pub rooms: Option<Vec<String>>,
     pub quit_service: bool,
 }
 
@@ -179,8 +165,8 @@ impl fmt::Display for HubLeaveRoomMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "HubLeaveRoomMsg: sid:{:?}, uid:{:?}, service:{}, room{}",
-            self.cid, self.uid, self.service, self.room
+            "HubLeaveRoomMsg: sid:{:?}, uid:{:?}, service:{}, rooms: {:?}",
+            self.cid, self.uid, self.service, self.rooms
         )
     }
 }

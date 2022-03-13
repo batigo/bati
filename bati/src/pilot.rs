@@ -12,7 +12,7 @@ use crate::pilot_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
 use bati_lib::service_msg::*;
-use bati_lib::{get_now_milli, Postman, PostmanMsg, ServiceConf, ServiceData, ServiceMsg};
+use bati_lib::{get_now_milli, Postman, PostmanMsg, ServiceConf};
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -180,7 +180,7 @@ impl Pilot {
                 });
             }
 
-            PilotMessage::FromPostman(mut msg) => {
+            PilotMessage::FromPostman(msg) => {
                 debug!("recv service msg in pilot: {} - {}", msg.service, msg.id);
 
                 if msg.ts > 0 {
@@ -255,7 +255,7 @@ impl Pilot {
         }
     }
 
-    async fn handle_join_service_msg(&self, mut msg: ServiceMsg2) {
+    async fn handle_join_service_msg(&self, mut msg: ServiceMsg) {
         debug!("handle join service msg: {:?}", msg);
         if msg.join_data.is_none() {
             return;
@@ -299,7 +299,7 @@ impl Pilot {
         .await;
     }
 
-    async fn handle_quit_service_msg(&mut self, mut msg: ServiceMsg2) {
+    async fn handle_quit_service_msg(&mut self, mut msg: ServiceMsg) {
         debug!("handle leave room msg: {:?}", msg);
         if msg.quit_data.is_none() {
             return;
@@ -314,15 +314,15 @@ impl Pilot {
             Pilot2HubMsg::LeaveRoom(HubLeaveRoomMsg {
                 cid,
                 uid,
-                service: msg.service.take().unwrap(),
-                room: msg.room.take().unwrap(),
+                service: msg.service,
+                rooms: quit_data.rids.take(),
                 quit_service: quit_data.quit_service,
             }),
         )
         .await;
     }
 
-    async fn handle_biz_msg(&mut self, mut msg: ServiceMsg2) {
+    async fn handle_biz_msg(&mut self, mut msg: ServiceMsg) {
         debug!("handle channel biz msg: {:?}", msg);
         if msg.biz_data.is_none() {
             warn!("no biz data for msg: {}", msg.id);
@@ -331,12 +331,12 @@ impl Pilot {
 
         let mut biz_data = msg.biz_data.take().unwrap();
 
-        let ServiceMsg2 {
+        let ServiceMsg {
             id, service, typ, ..
         } = msg;
 
         let mut biz_msg = HubServiceBizMsg::default();
-        let mut cmsg = ClientMsg {
+        let cmsg = ClientMsg {
             id: id.clone(),
             typ: ClientMsgType(CMSG_TYPE_BIZ),
             ack: 0,
@@ -380,14 +380,6 @@ impl Pilot {
             .await
         } else {
             self.send_hub_msgs(None, Pilot2HubMsg::Biz(biz_msg)).await;
-        }
-    }
-
-    fn get_broadcast_ratio(&self, msg: &ServiceMsg) -> Option<u8> {
-        match msg.broadcast_rate {
-            Some(v) if (0..100).contains(&v) => Some(v as u8),
-            Some(v) if v < 0 => Some(0),
-            _ => None,
         }
     }
 
