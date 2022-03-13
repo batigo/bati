@@ -90,7 +90,7 @@ async fn main() {
             .state(hub_sender)
             .state(pilot)
             .state(ix)
-            .service(web::resource("/ws").to(websocket_req_handler))
+            .service(web::resource("/ws").to(websocket_handler))
             .service(web::resource("/healthcheck").to(healthcheck_handler))
             .service(web::resource("/metrics").to(metrics_handler))
     })
@@ -128,7 +128,7 @@ struct ConnLite {
     pilot: PilotSender,
 }
 
-async fn websocket_req_handler(
+async fn websocket_handler(
     req: HttpRequest,
     hub: web::types::State<HubSender>,
     pilot: web::types::State<PilotSender>,

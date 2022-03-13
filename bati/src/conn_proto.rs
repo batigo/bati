@@ -12,7 +12,7 @@ pub const CMSG_TYPE_INIT: u8 = 1;
 pub const CMSG_TYPE_INIT_RESP: u8 = 2;
 pub const CMSG_TYPE_BIZ: u8 = 3;
 pub const CMSG_TYPE_ACK: u8 = 4;
-pub const CMSG_TYPE_ECHO: u8 = 102;
+pub const CMSG_TYPE_ECHO: u8 = 100;
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
 pub struct ClientMsgType(pub u8);
@@ -137,7 +137,6 @@ pub struct ClientMsg {
     #[serde(rename = "d", skip_serializing_if = "Option::is_none")]
     pub data: Option<Box<RawValue>>,
 }
-
 
 impl ClientMsg {
     pub fn validate(&self) -> Result<(), &'static str> {

@@ -8,7 +8,6 @@ use crate::pilot_proto::*;
 use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
-use ntex::util::Bytes;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

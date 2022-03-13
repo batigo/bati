@@ -7,7 +7,6 @@ use futures::{SinkExt, StreamExt};
 use ntex::util::Bytes;
 use std::collections::*;
 use std::fmt;
-use std::rc::Rc;
 
 pub fn new_hub_channel(buffer: usize) -> (HubSender, HubReceiver) {
     let (tx, rx) = mpsc::channel(buffer);
@@ -22,7 +21,7 @@ impl HubSender {
         self.0.send(msg).await
     }
 
-    pub async fn send_session_msg(&mut self, msg: Conn2HubMsg) -> SendResult {
+    pub async fn send_conn_msg(&mut self, msg: Conn2HubMsg) -> SendResult {
         self.send(HubMessage::FromConn(msg)).await
     }
 

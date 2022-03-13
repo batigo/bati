@@ -64,6 +64,7 @@ impl Conn {
     }
 
     pub fn start(self, ws_sink: WsSink) -> ConnSender {
+        info!("conn[{}] starting... :", self.id);
         use crate::timer::start_conn_hearbeat_cron;
         let conn_sender = self.msg_sender.clone();
         rt::spawn(async move {
@@ -94,24 +95,24 @@ impl Conn {
                     Master2ConnMsg::Shutdown => false,
                     Master2ConnMsg::Frame(frame) => match frame {
                         WsFrame::Ping(msg) => {
-                            debug!("recv ping from session: {}", self.id);
+                            debug!("recv ping from conn: {}", self.id);
                             self.send_client_msg(WsMessage::Pong(msg)).await
                         }
                         WsFrame::Pong(bs) => {
-                            debug!("recv pong from session: {}", self.id);
+                            debug!("recv pong from conn: {}", self.id);
                             self.send_client_msg(WsMessage::Pong(bs)).await
                         }
                         WsFrame::Text(bs) => {
-                            debug!("recv text msg from session: {}, msg: {:?}", self.id, bs);
+                            info!("recv text msg from conn: {}", self.id,);
                             self.proc_client_msg(bs.as_slice()).await
                         }
                         WsFrame::Binary(bs) => {
-                            debug!("recv bin msg from session: {}, msg: {:?}", self.id, bs);
+                            info!("recv bin msg from conn: {}", self.id,);
                             self.proc_client_msg(bs.as_slice()).await
                         }
                         WsFrame::Close(reason) => {
                             warn!(
-                                "recv close msg from session: {}, reason: {}",
+                                "recv close msg from conn: {}, reason: {}",
                                 self.id,
                                 match reason {
                                     Some(r) => r.code.into(),
@@ -128,7 +129,7 @@ impl Conn {
                 }
             }
             ConnMsg::FromHub(msg) => {
-                debug!("session recv SessionHubMsg: {} - {:?}", self.id, msg);
+                debug!("conn recv SessionHubMsg: {} - {:?}", self.id, msg);
                 return match msg {
                     Hub2ConnMsg::QUIT => {
                         warn!("recv quit msg from hub: {}", self.id);
@@ -136,7 +137,7 @@ impl Conn {
                     }
                     Hub2ConnMsg::BIZ(bs) => {
                         debug!(
-                            "send biz msg to session: {}, msg: {}",
+                            "send biz msg to conn: {}, msg: {}",
                             self.id,
                             String::from_utf8(bs.to_vec()).unwrap_or_else(|_| "".to_string())
                         );
@@ -147,7 +148,7 @@ impl Conn {
             ConnMsg::FromTimer(msg) => match msg {
                 Timer2ConnMsg::HearBeatCheck => {
                     if Instant::now().duration_since(self.hb) > CLIENT_TIMEOUT {
-                        warn!("session timeout: {}", self.id);
+                        warn!("conn timeout: {}", self.id);
                         return false;
                     }
                     if !self.send_client_msg(WsMessage::Ping(Bytes::new())).await {
@@ -178,7 +179,7 @@ impl Conn {
                 let data = encoder.decode(&bs);
                 if data.is_err() {
                     error!(
-                        "recv bad msg from session: {}, err: {}, msg: {:?}",
+                        "recv bad msg from conn: {}, err: {}, msg: {:?}",
                         self.id,
                         data.err().unwrap(),
                         bs,
@@ -198,7 +199,7 @@ impl Conn {
 
         if msg.is_err() {
             error!(
-                "recv bad msg from session: {}, err: {}",
+                "recv bad msg from conn: {}, err: {}",
                 self.id,
                 msg.err().unwrap()
             );
@@ -247,14 +248,14 @@ impl Conn {
 
     async fn proc_init_cmsg(&mut self, msg: &ClientMsg) {
         if self.encoder.is_some() {
-            warn!("recv init msg from inited session: {}", self.id);
+            warn!("recv init msg from inited conn: {}", self.id);
             return;
         }
 
         let r: serde_json::Result<ConnInitMsgData> =
             serde_json::from_str(msg.data.as_ref().unwrap().get());
         if r.is_err() {
-            warn!("recv init msg from inited session: {}", self.id);
+            warn!("recv init msg from inited conn: {}", self.id);
             return self.quit().await;
         }
 
@@ -262,7 +263,7 @@ impl Conn {
         let data = self.gen_init_resp_data(data);
         if data.is_err() {
             warn!(
-                "failed to gen session init resp data: {}, err: {}",
+                "failed to gen conn init resp data: {}, err: {}",
                 self.id,
                 data.err().unwrap()
             );
@@ -324,7 +325,7 @@ impl Conn {
 
     async fn send_cmsg(&self, msg: &ClientMsg) -> Result<(), Box<dyn std::error::Error>> {
         debug!(
-            "send msg to session: {}, msg, id: {}, type: {}, data: {:?}",
+            "send msg to conn: {}, msg, id: {}, type: {}, data: {:?}",
             self.id, msg.id, msg.typ, msg.data
         );
 
@@ -343,12 +344,12 @@ impl Conn {
 
     async fn quit(&mut self) {
         info!(
-            "session stopping, sid: {}, mid: {}, did: {}, dt: {}, ip: {}",
+            "conn stopping, sid: {}, mid: {}, did: {}, dt: {}, ip: {}",
             self.id, self.uid, self.did, self.dt, self.ip
         );
         if self.join_hub {
             self.hub
-                .send_session_msg(Conn2HubMsg::Unregister(ConnUnregMsg {
+                .send_conn_msg(Conn2HubMsg::Unregister(ConnUnregMsg {
                     cid: self.id.clone(),
                     uid: self.uid.clone(),
                     did: self.did.clone(),
@@ -389,10 +390,10 @@ impl Conn {
             }
         }
 
-        // if data.session_id.is_some() {
-        //     resp_msg.session_id = Some(data.session_id.as_ref().unwrap().to_string());
-        // } else if data.sessionid.is_some() {
-        //     resp_msg.session_id = Some(data.sessionid.as_ref().unwrap().to_string());
+        // if data.conn_id.is_some() {
+        //     resp_msg.conn_id = Some(data.conn_id.as_ref().unwrap().to_string());
+        // } else if data.connid.is_some() {
+        //     resp_msg.conn_id = Some(data.connid.as_ref().unwrap().to_string());
         // }
 
         Ok(resp_msg)
@@ -406,7 +407,7 @@ impl Conn {
             encoder: self.encoder.clone().unwrap(),
             addr: self.msg_sender.clone(),
         });
-        match self.hub.send_session_msg(msg).await {
+        match self.hub.send_conn_msg(msg).await {
             Ok(_) => {
                 self.join_hub = true;
                 debug!("success to send HubSessionRegMsg: {}", self.id);
@@ -422,7 +423,7 @@ impl fmt::Display for Conn {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "session - id:{}, uid:{}, did:{}, ip:{}, encoder: {:?}",
+            "conn - id:{}, uid:{}, did:{}, ip:{}, encoder: {:?}",
             self.id, self.uid, self.did, self.ip, self.encoder,
         )
     }

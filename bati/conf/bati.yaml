@@ -3,8 +3,8 @@ server:
     addr: 0.0.0.0:9873
 
 log:
-    level: debug
-    file: bati/conf/bati.log
+    level: info
+    file: /dev/stdout
     roll_size: 50mb
 
 service_registry:
