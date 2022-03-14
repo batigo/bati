@@ -356,7 +356,7 @@ impl Pilot {
             cids: biz_data.cids.take(),
             uids: biz_data.uids.take(),
             service: Some(service),
-            room: biz_msg.room.take(),
+            room: biz_data.rid.take(),
             blacks: biz_data.black_uids.take(),
             whites: biz_data.white_uids.take(),
             ratio: biz_data.broadcast_ratio.take(),

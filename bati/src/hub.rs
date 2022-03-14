@@ -9,9 +9,10 @@ use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
 use ntex::util::Bytes;
-use rand::Rng;
+use rand::{Rng, thread_rng};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use rand::rngs::ThreadRng;
 
 pub struct Hub {
     ix: usize,
@@ -40,7 +41,7 @@ struct Conn {
 
 impl Conn {
     async fn send_conn_msg(&self, cid: &str, msg: Hub2ConnMsg) {
-        debug!("send msg to conn: {} - {:?}", cid, msg);
+        warn!("send msg to conn: {} - {:?}", cid, msg);
         if let Err(e) = self.addr.send_hub_msg(msg).await {
             warn!("failed to send conn biz msg: {} - {}", cid, e);
             self.addr.send_hub_msg(Hub2ConnMsg::QUIT).await;
@@ -133,7 +134,7 @@ impl Hub {
                 }
             }
             HubMessage::FromPilot(msg) => {
-                warn!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
+                debug!("recv Pilot2HubMsg in hub-{}: {:?}", self.ix, msg);
                 match msg {
                     Pilot2HubMsg::Biz(msg) => self.handle_biz_msg(msg).await,
                     Pilot2HubMsg::JoinService(msg) => self.handle_join_service_msg(msg).await,
@@ -425,8 +426,8 @@ impl Hub {
         self.decr_dt_count(msg.dt);
         self.remove_uid(&msg.uid, &msg.cid);
 
-        let session = conn.unwrap();
-        debug!("conn unreg data: {} - {}", msg.cid, session);
+        let conn = conn.unwrap();
+        debug!("conn unreg data: {} - {}", msg.cid, conn);
 
         let mut quit_rooms = HashSet::new();
         if let Some(rooms) = self.get_conn_rooms(&msg.cid) {
@@ -546,7 +547,7 @@ impl Hub {
             }
             Err(e) => {
                 error!(
-                    "failed to encode session client msg, msgid: {}, err: {}",
+                    "failed to encode conn client msg, msgid: {}, err: {}",
                     msg.id, e
                 );
                 0
@@ -637,44 +638,41 @@ impl Hub {
         let mut send_count: u64 = 0;
         let whites = msg.whites.take();
         let blacks = msg.blacks.take();
-        let ratio = msg.ratio.take();
-
-        if whites.is_none() && blacks.is_none() && ratio.is_none() {
-            for (sid, conn) in conns.iter() {
-                match msg.data.get_data_with_encoder(&conn.encoder) {
-                    Err(e) => {
-                        error!(
-                            "failed to encode msg, encoder: {}, err: {}",
-                            conn.encoder.name(),
-                            e
-                        );
-                    }
-                    Ok(data) => {
-                        conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
-                        send_count += 1;
-                    }
-                }
-            }
+        let ratio : u8;
+        if let Some(n) = msg.ratio.take() {
+            ratio = n;
         } else {
-            for (sid, conn) in conns.iter() {
-                if self.filter_conn(&conn.uid, &whites, &blacks, &ratio) {
-                    continue;
-                }
-                match msg.data.get_data_with_encoder(&conn.encoder) {
-                    Err(e) => {
-                        error!(
+            ratio = 100;
+        }
+
+        let need_filter =  ratio < 100 || blacks.is_some();
+
+        let mut randd: Option<ThreadRng> = None;
+        if need_filter {
+            randd = Some(rand::thread_rng());
+        }
+
+        let mut rand = rand::thread_rng();
+        for (sid, conn) in conns.iter() {
+            if need_filter && !self.filter_conn(&conn.uid, &whites, &blacks, ratio, randd.as_mut().unwrap()) {
+                continue;
+            }
+            match msg.data.get_data_with_encoder(&conn.encoder) {
+                Err(e) => {
+                    error!(
                             "failed to encode msg, encoder: {}, err: {}",
                             conn.encoder.name(),
                             e
                         );
-                    }
-                    Ok(data) => {
-                        conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
-                        send_count += 1;
-                    }
+                }
+                Ok(data) => {
+                    conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
+                    send_count += 1;
                 }
             }
         }
+
+
 
         metric::inc_send_msg(
             match msg.service.as_ref() {
@@ -764,7 +762,8 @@ impl Hub {
         uid: &String,
         whites: &Option<Vec<String>>,
         blacks: &Option<Vec<String>>,
-        ratio: &Option<u8>,
+        ratio: u8,
+        rand: &mut rand::rngs::ThreadRng,
     ) -> bool {
         if let Some(v) = whites {
             if v.contains(uid) {
@@ -778,11 +777,7 @@ impl Hub {
             }
         }
 
-        if let Some(ratio) = ratio {
-            return *ratio >= 100 || self.rand.clone().gen_range(0, 100) < *ratio;
-        }
-
-        true
+        return ratio >= 100 || rand.gen_range(0, 100) < ratio;
     }
 
     async fn do_stats(&self) {

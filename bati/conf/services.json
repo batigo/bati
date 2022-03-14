@@ -4,7 +4,7 @@
     "enable_close_notify": true,
     "enable_multi_rooms": true,
     "kafka": {
-      "host_ports": "192.168.2.107:9092"
+      "host_ports": "127.0.0.1:9092"
     }
   }
 ]

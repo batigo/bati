@@ -164,7 +164,7 @@ impl fmt::Display for HubLeaveRoomMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "HubLeaveRoomMsg: sid:{:?}, uid:{:?}, service:{}, rooms: {:?}",
+            "HubLeaveRoomMsg: cid:{:?}, uid:{:?}, service:{}, rooms: {:?}",
             self.cid, self.uid, self.service, self.rooms
         )
     }
@@ -201,7 +201,7 @@ pub struct ConnRegMsg {
 
 impl fmt::Display for ConnRegMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ConnRegMsg: sid:{}, ", self.cid)
+        write!(f, "ConnRegMsg: cid:{}, ", self.cid)
     }
 }
 
@@ -216,7 +216,7 @@ pub struct ConnUnregMsg {
 
 impl fmt::Display for ConnUnregMsg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ConnUnregMsg: sid:{}, ", self.cid)
+        write!(f, "ConnUnregMsg: cid:{}, ", self.cid)
     }
 }
 
