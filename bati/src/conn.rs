@@ -206,7 +206,7 @@ impl Conn {
             return false;
         }
 
-        let mut msg = msg.unwrap();
+        let msg = msg.unwrap();
         let ok = msg.validate();
         if ok.is_err() {
             warn!(

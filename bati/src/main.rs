@@ -31,6 +31,7 @@ extern crate prometheus;
 
 #[macro_use]
 extern crate lazy_static;
+extern crate core;
 
 #[ntex::main]
 async fn main() {

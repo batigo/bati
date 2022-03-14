@@ -334,9 +334,7 @@ impl Pilot {
 
         let mut biz_data = msg.biz_data.take().unwrap();
 
-        let ServiceMsg {
-            id, service, typ, ..
-        } = msg;
+        let ServiceMsg { id, service, .. } = msg;
 
         let mut biz_msg = HubServiceBizMsg::default();
         let cmsg = ClientMsg {
@@ -362,10 +360,9 @@ impl Pilot {
             blacks: biz_data.black_uids.take(),
             whites: biz_data.white_uids.take(),
             ratio: biz_data.broadcast_ratio.take(),
-            data: Default::default(),
+            data: ServiceBizData::new(Bytes::from(data.unwrap())),
         };
 
-        biz_msg.data = ServiceBizData::new(Bytes::from(data.unwrap()));
         self.encoders.iter().for_each(|e| {
             biz_msg
                 .data

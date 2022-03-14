@@ -39,9 +39,10 @@ struct Conn {
 }
 
 impl Conn {
-    async fn send_conn_msg(&self, sid: &str, msg: Hub2ConnMsg) {
+    async fn send_conn_msg(&self, cid: &str, msg: Hub2ConnMsg) {
+        debug!("send msg to conn: {} - {:?}", cid, msg);
         if let Err(e) = self.addr.send_hub_msg(msg).await {
-            warn!("failed to send conn biz msg: {} - {}", sid, e);
+            warn!("failed to send conn biz msg: {} - {}", cid, e);
             self.addr.send_hub_msg(Hub2ConnMsg::QUIT).await;
         }
     }
@@ -319,7 +320,6 @@ impl Hub {
             quit_rooms.iter().for_each(|room| self.quit_room(cid, room));
         }
 
-        let rid = room_id.clone();
         self.add_conn_room(cid, &room_id);
         self.rooms
             .entry(room_id)
@@ -633,13 +633,33 @@ impl Hub {
             return;
         }
 
+        let conns = conns.unwrap();
         let mut send_count: u64 = 0;
         let whites = msg.whites.take();
         let blacks = msg.blacks.take();
         let ratio = msg.ratio.take();
 
-        for (sid, conn) in conns.unwrap().iter() {
-            if self.filter_conn(&conn.uid, &whites, &blacks, &ratio) {
+        if whites.is_none() && blacks.is_none() && ratio.is_none() {
+            for (sid, conn) in conns.iter() {
+                match msg.data.get_data_with_encoder(&conn.encoder) {
+                    Err(e) => {
+                        error!(
+                            "failed to encode msg, encoder: {}, err: {}",
+                            conn.encoder.name(),
+                            e
+                        );
+                    }
+                    Ok(data) => {
+                        conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
+                        send_count += 1;
+                    }
+                }
+            }
+        } else {
+            for (sid, conn) in conns.iter() {
+                if self.filter_conn(&conn.uid, &whites, &blacks, &ratio) {
+                    continue;
+                }
                 match msg.data.get_data_with_encoder(&conn.encoder) {
                     Err(e) => {
                         error!(
@@ -666,39 +686,7 @@ impl Hub {
     }
 
     async fn broadcast_bizmsg(&mut self, mut msg: HubServiceBizMsg) {
-        if self.conns.is_empty() {
-            return;
-        }
-
-        let mut send_count: u64 = 0;
-        let whites = msg.whites.take();
-        let blacks = msg.blacks.take();
-        let ratio = msg.ratio.take();
-        for (sid, conn) in self.conns.iter() {
-            if self.filter_conn(&conn.uid, &whites, &blacks, &ratio) {
-                continue;
-            }
-            match msg.data.get_data_with_encoder(&conn.encoder) {
-                Err(e) => {
-                    error!(
-                        "failed to encode msg, encoder: {}, err: {}",
-                        conn.encoder.name(),
-                        e
-                    );
-                }
-                Ok(data) => {
-                    conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
-                    send_count += 1;
-                }
-            }
-        }
-        metric::inc_send_msg(
-            match msg.service.as_ref() {
-                Some(s) => s.as_str(),
-                None => "x",
-            },
-            send_count,
-        );
+        return self.broadcast_service_bizmsg(msg, Some(&self.conns)).await;
     }
 
     async fn handle_join_service_msg(&mut self, msg: HubJoinServiceMsg) {
@@ -791,7 +779,7 @@ impl Hub {
         }
 
         if let Some(ratio) = ratio {
-            return self.rand.clone().gen_range(0, 100) < *ratio;
+            return *ratio >= 100 || self.rand.clone().gen_range(0, 100) < *ratio;
         }
 
         true
