@@ -75,58 +75,36 @@ pub struct HubServiceBizMsg {
 #[derive(Clone, Debug)]
 pub struct ServiceBizData {
     raw_data: Bytes,
-    encoding_data: Vec<Option<Bytes>>,
+    compressor_data: Option<Bytes>,
 }
 
 impl Default for ServiceBizData {
     fn default() -> Self {
         ServiceBizData {
             raw_data: Bytes::from(""),
-            encoding_data: vec![None, None],
+            compressor_data: None,
         }
     }
 }
 
 impl ServiceBizData {
-    pub fn new(raw_data: Bytes) -> Self {
+    pub fn new(raw_data: Bytes, compressor_data: Option<Bytes>) -> Self {
         ServiceBizData {
             raw_data,
-            encoding_data: vec![None, None],
-        }
-    }
-
-    pub fn insert_data_with_encoder(&mut self, encoder: &Encoder) -> Result<(), String> {
-        if encoder.name() == NULLENCODER_NAME {
-            return Ok(());
-        }
-
-        match encoder.encode(self.raw_data.as_ref()) {
-            Ok(data) => {
-                let encoder_index = Self::encoder_index(encoder.name());
-                self.encoding_data[encoder_index] = Some(Bytes::from(data));
-                Ok(())
-            }
-            Err(e) => Err(e.to_string()),
+            compressor_data,
         }
     }
 
     pub fn get_data_with_encoder(&mut self, encoder: &Encoder) -> Result<Bytes, String> {
         match encoder.name() {
             NULLENCODER_NAME => Ok(self.raw_data.clone()),
-            encoding => match self.encoding_data.get(Self::encoder_index(encoding)) {
-                Some(Some(data)) => Ok(data.clone()),
-                _ => match self.insert_data_with_encoder(encoder) {
-                    Err(e) => Err(e),
-                    Ok(_) => self.get_data_with_encoder(encoder),
-                },
-            },
-        }
-    }
-
-    fn encoder_index(encoding: &'static str) -> usize {
-        match encoding {
-            ZSTD_NAME => 0,
-            _ => 1,
+            _ => {
+                if let Some(ref bs) = self.compressor_data {
+                    Ok(bs.clone())
+                } else {
+                    Ok(self.raw_data.clone())
+                }
+            }
         }
     }
 }

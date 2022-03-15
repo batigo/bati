@@ -1,10 +1,4 @@
-use futures::channel::mpsc::{self, Sender};
-use futures::{SinkExt, StreamExt};
-use log::{debug, error, info, warn};
-use ntex::{rt, util::Bytes};
-use std::collections::HashMap;
-
-use crate::conn_proto::*;
+use crate::cmsg;
 use crate::encoding::*;
 use crate::hub_proto::*;
 use crate::metric;
@@ -13,6 +7,11 @@ use crate::utils::*;
 use bati_lib as lib;
 use bati_lib::service_msg::*;
 use bati_lib::{get_now_milli, Postman, PostmanMsg, ServiceConf};
+use futures::channel::mpsc::{self, Sender};
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
+use ntex::{rt, util::Bytes};
+use std::collections::HashMap;
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -327,30 +326,50 @@ impl Pilot {
 
     async fn handle_biz_msg(&mut self, mut msg: ServiceMsg) {
         debug!("handle channel biz msg: {:?}", msg);
-        if msg.biz_data.is_none() {
+        if msg.biz_data.is_none() || msg.biz_data.as_ref().unwrap().data.is_none() {
             warn!("no biz data for msg: {}", msg.id);
             return;
         };
 
         let mut biz_data = msg.biz_data.take().unwrap();
+        let data = biz_data.data.take().unwrap();
+
+        let mut need_comressor = false;
+        for encode in self.encoders.iter() {
+            if encode.name() == DEFLATE_NAME {
+                need_comressor = true;
+                break;
+            }
+        }
+        need_comressor = need_comressor && data.len() > 200;
 
         let ServiceMsg { id, service, .. } = msg;
 
-        let mut biz_msg = HubServiceBizMsg::default();
-        let cmsg = ClientMsg {
+        let cmsg = cmsg::ClientMsg {
             id: id.clone(),
-            typ: ClientMsgType(CMSG_TYPE_BIZ),
+            r#type: cmsg::ClientMsgType::Biz as i32,
             ack: 0,
             service_id: Some(service.clone()),
-            data: biz_data.data.take(),
+            compressor: None,
+            biz_data: Some(data),
+            init_data: None,
         };
-        let data = serde_json::to_vec(&cmsg);
-        if data.is_err() {
-            error!("failed to gen Session2ClientMsg: {}", data.err().unwrap());
-            return;
+
+        let bs = cmsg::serialize_cmsg(&cmsg);
+
+        let service_biz_data;
+        if need_comressor {
+            match Encoder::new(DEFLATE_NAME).encode(&bs) {
+                Ok(cbs) => {
+                    service_biz_data = ServiceBizData::new(Bytes::from(bs), Some(Bytes::from(cbs)));
+                }
+                _ => service_biz_data = ServiceBizData::new(Bytes::from(bs), None),
+            }
+        } else {
+            service_biz_data = ServiceBizData::new(Bytes::from(bs), None);
         }
 
-        let mut biz_msg = HubServiceBizMsg {
+        let biz_msg = HubServiceBizMsg {
             id,
             typ: biz_data.typ,
             cids: biz_data.cids.take(),
@@ -360,17 +379,8 @@ impl Pilot {
             blacks: biz_data.black_uids.take(),
             whites: biz_data.white_uids.take(),
             ratio: biz_data.broadcast_ratio.take(),
-            data: ServiceBizData::new(Bytes::from(data.unwrap())),
+            data: service_biz_data,
         };
-
-        self.encoders.iter().for_each(|e| {
-            biz_msg
-                .data
-                .insert_data_with_encoder(e)
-                .unwrap_or_else(|err| {
-                    error!("failed to insert data with encoder: {} - {}", e.name(), err);
-                });
-        });
 
         if biz_msg.cids.is_some() && biz_msg.cids.as_ref().unwrap().len() == 1 {
             self.send_hub_msgs(

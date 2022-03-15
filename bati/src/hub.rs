@@ -10,7 +10,7 @@ use log::{debug, error, warn};
 use ntex::rt;
 use ntex::util::Bytes;
 use rand::rngs::ThreadRng;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -648,7 +648,6 @@ impl Hub {
             randd = Some(rand::thread_rng());
         }
 
-        let mut rand = rand::thread_rng();
         for (sid, conn) in conns.iter() {
             if need_filter
                 && !self.filter_conn(&conn.uid, &whites, &blacks, ratio, randd.as_mut().unwrap())
@@ -679,7 +678,7 @@ impl Hub {
         );
     }
 
-    async fn broadcast_bizmsg(&mut self, mut msg: HubServiceBizMsg) {
+    async fn broadcast_bizmsg(&mut self, msg: HubServiceBizMsg) {
         return self.broadcast_service_bizmsg(msg, Some(&self.conns)).await;
     }
 
