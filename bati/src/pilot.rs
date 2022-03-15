@@ -11,6 +11,7 @@ use futures::channel::mpsc::{self, Sender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use ntex::{rt, util::Bytes};
+use serde_json::error::Category::Data;
 use std::collections::HashMap;
 
 #[derive(Clone)]
@@ -334,41 +335,9 @@ impl Pilot {
         let mut biz_data = msg.biz_data.take().unwrap();
         let data = biz_data.data.take().unwrap();
 
-        let mut need_comressor = false;
-        for encode in self.encoders.iter() {
-            if encode.name() == DEFLATE_NAME {
-                need_comressor = true;
-                break;
-            }
-        }
-        need_comressor = need_comressor && data.len() > 200;
-
         let ServiceMsg { id, service, .. } = msg;
 
-        let cmsg = cmsg::ClientMsg {
-            id: id.clone(),
-            r#type: cmsg::ClientMsgType::Biz as i32,
-            ack: 0,
-            service_id: Some(service.clone()),
-            compressor: None,
-            biz_data: Some(data),
-            init_data: None,
-        };
-
-        let bs = cmsg::serialize_cmsg(&cmsg);
-
-        let service_biz_data;
-        if need_comressor {
-            match Encoder::new(DEFLATE_NAME).encode(&bs) {
-                Ok(cbs) => {
-                    service_biz_data = ServiceBizData::new(Bytes::from(bs), Some(Bytes::from(cbs)));
-                }
-                _ => service_biz_data = ServiceBizData::new(Bytes::from(bs), None),
-            }
-        } else {
-            service_biz_data = ServiceBizData::new(Bytes::from(bs), None);
-        }
-
+        let service_biz_data = self.gen_service_biz_data(id.clone(), service.clone(), data);
         let biz_msg = HubServiceBizMsg {
             id,
             typ: biz_data.typ,
@@ -391,6 +360,56 @@ impl Pilot {
         } else {
             self.send_hub_msgs(None, Pilot2HubMsg::Biz(biz_msg)).await;
         }
+    }
+
+    fn gen_service_biz_data(&self, id: String, service: String, data: Vec<u8>) -> ServiceBizData {
+        let mut need_comressor = false;
+        for encode in self.encoders.iter() {
+            if encode.name() == DEFLATE_NAME {
+                need_comressor = true;
+                break;
+            }
+        }
+        need_comressor = need_comressor && data.len() > 200;
+
+        if need_comressor {
+            if let Ok(bs) = Encoder::new(DEFLATE_NAME).encode(&data) {
+                let cmsg = cmsg::ClientMsg {
+                    id: id.clone(),
+                    r#type: cmsg::ClientMsgType::Biz as i32,
+                    ack: 0,
+                    service_id: Some(service.clone()),
+                    compressor: None,
+                    biz_data: Some(data),
+                    init_data: None,
+                };
+                let rbs = cmsg::serialize_cmsg(&cmsg);
+
+                let cmsg = cmsg::ClientMsg {
+                    id: id.clone(),
+                    r#type: cmsg::ClientMsgType::Biz as i32,
+                    ack: 0,
+                    service_id: Some(service),
+                    compressor: Some(cmsg::Compressor::Deflate as i32),
+                    biz_data: Some(bs),
+                    init_data: None,
+                };
+                let cbs = cmsg::serialize_cmsg(&cmsg);
+                return ServiceBizData::new(Bytes::from(rbs), Some(Bytes::from(cbs)));
+            }
+        }
+
+        let cmsg = cmsg::ClientMsg {
+            id: id.clone(),
+            r#type: cmsg::ClientMsgType::Biz as i32,
+            ack: 0,
+            service_id: Some(service.clone()),
+            compressor: None,
+            biz_data: Some(data),
+            init_data: None,
+        };
+        let bs = cmsg::serialize_cmsg(&cmsg);
+        return ServiceBizData::new(Bytes::from(bs), None);
     }
 
     async fn send_postman_msg(&mut self, channel: String, msg: lib::PostmanBatiMsg) {
