@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 mod cfg;
+mod cmsg;
 mod conn;
 mod conn_proto;
 mod const_proto;

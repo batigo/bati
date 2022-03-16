@@ -57,7 +57,7 @@ pub struct BizData {
     pub broadcast_ratio: Option<u8>,
     pub black_uids: Option<Vec<String>>,
     pub white_uids: Option<Vec<String>>,
-    pub data: Option<Box<serde_json::value::RawValue>>,
+    pub data: Option<Vec<u8>>,
 }
 
 impl fmt::Display for ServiceMsg {
@@ -128,7 +128,7 @@ pub struct BatiMsg {
     #[serde(rename = "type")]
     pub typ: BatiMsgType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub data: Option<Box<serde_json::value::RawValue>>,
+    pub data: Option<Vec<u8>>,
     pub cid: String,
     pub uid: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,7 +153,7 @@ impl BatiMsg {
         cid: String,
         uid: String,
         ip: Option<String>,
-        data: Option<Box<serde_json::value::RawValue>>,
+        data: Option<Vec<u8>>,
     ) -> Self {
         let mid;
         if let Some(id) = id {

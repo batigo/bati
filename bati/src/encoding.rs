@@ -1,30 +1,30 @@
 use std::fmt;
-use std::io::{Cursor, Read, Result as IOResult, Write};
+use std::io::{Read, Result as IOResult, Write};
 
-pub const ZSTD_NAME: &str = "zstd";
+// pub const ZSTD_NAME: &str = "zstd";
 pub const DEFLATE_NAME: &str = "deflate";
 pub const NULLENCODER_NAME: &str = "null";
 
-#[derive(Default, Clone, Copy)]
-pub struct Zstd;
-
-impl Zstd {
-    fn compress(d: &[u8]) -> IOResult<Vec<u8>> {
-        let buffer = Cursor::new(Vec::new());
-        let mut encoder = zstd::stream::write::Encoder::new(buffer, 0)?;
-        encoder.write_all(d)?;
-        let data = encoder.finish()?;
-        Ok(data.into_inner())
-    }
-
-    fn decompress(d: &[u8]) -> IOResult<Vec<u8>> {
-        let buffer = Cursor::new(Vec::new());
-        let mut decoder = zstd::stream::write::Decoder::new(buffer)?;
-        decoder.write_all(d)?;
-        decoder.flush()?;
-        Ok(decoder.into_inner().into_inner())
-    }
-}
+// #[derive(Default, Clone, Copy)]
+// pub struct Zstd;
+//
+// impl Zstd {
+//     fn compress(d: &[u8]) -> IOResult<Vec<u8>> {
+//         let buffer = Cursor::new(Vec::new());
+//         let mut encoder = zstd::stream::write::Encoder::new(buffer, 0)?;
+//         encoder.write_all(d)?;
+//         let data = encoder.finish()?;
+//         Ok(data.into_inner())
+//     }
+//
+//     fn decompress(d: &[u8]) -> IOResult<Vec<u8>> {
+//         let buffer = Cursor::new(Vec::new());
+//         let mut decoder = zstd::stream::write::Decoder::new(buffer)?;
+//         decoder.write_all(d)?;
+//         decoder.flush()?;
+//         Ok(decoder.into_inner().into_inner())
+//     }
+// }
 
 #[derive(Default, Clone, Copy)]
 pub struct Deflater;
@@ -70,7 +70,7 @@ impl fmt::Display for Encoder {
 impl Encoder {
     pub fn new(name: &str) -> Self {
         match name {
-            ZSTD_NAME => Encoder { name: ZSTD_NAME },
+            // ZSTD_NAME => Encoder { name: ZSTD_NAME },
             DEFLATE_NAME => Encoder { name: DEFLATE_NAME },
             _ => Encoder {
                 name: NULLENCODER_NAME,
@@ -84,7 +84,7 @@ impl Encoder {
 
     pub fn encode(&self, d: &[u8]) -> IOResult<Vec<u8>> {
         match self.name {
-            ZSTD_NAME => Zstd::compress(d),
+            // ZSTD_NAME => Zstd::compress(d),
             DEFLATE_NAME => Deflater::compress(d),
             _ => Null::compress(d),
         }
@@ -92,7 +92,7 @@ impl Encoder {
 
     pub fn decode(&self, d: &[u8]) -> IOResult<Vec<u8>> {
         match self.name {
-            ZSTD_NAME => Zstd::decompress(d),
+            // ZSTD_NAME => Zstd::decompress(d),
             DEFLATE_NAME => Deflater::decompress(d),
             _ => Null::decompress(d),
         }
@@ -109,16 +109,16 @@ impl PartialEq for Encoder {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_zstd() {
-        let raw_s = "adjsdfas;1234324sdfsdfsdfasfasfs23uirelsjlewrpoeopsfs速度快发".to_string();
-        let encoder = Encoder::new(ZSTD_NAME);
-        let zip_data = encoder.encode(raw_s.as_bytes());
-        assert!(zip_data.is_ok());
-        let unzip_data = encoder.decode(zip_data.unwrap().as_slice());
-        assert!(unzip_data.is_ok());
-        assert_eq!(raw_s.into_bytes(), unzip_data.unwrap());
-    }
+    // #[test]
+    // fn test_zstd() {
+    //     let raw_s = "adjsdfas;1234324sdfsdfsdfasfasfs23uirelsjlewrpoeopsfs速度快发".to_string();
+    //     let encoder = Encoder::new(ZSTD_NAME);
+    //     let zip_data = encoder.encode(raw_s.as_bytes());
+    //     assert!(zip_data.is_ok());
+    //     let unzip_data = encoder.decode(zip_data.unwrap().as_slice());
+    //     assert!(unzip_data.is_ok());
+    //     assert_eq!(raw_s.into_bytes(), unzip_data.unwrap());
+    // }
 
     #[test]
     fn test_deflate() {

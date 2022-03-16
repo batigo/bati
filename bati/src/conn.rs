@@ -2,14 +2,13 @@ use crate::conn_proto::*;
 use crate::const_proto::*;
 use crate::encoding::*;
 use crate::hub_proto::*;
-use crate::metric;
 use crate::pilot_proto::*;
 use crate::utils::*;
+use crate::{cmsg, metric};
 use bati_lib as lib;
 use log::{debug, error, info, warn};
 use ntex::ws::{Frame as WsFrame, Message as WsMessage, WsSink};
 use ntex::{rt, util::Bytes};
-use serde_json::value::RawValue;
 use std::fmt;
 use std::time::{Duration, Instant};
 use zstd::zstd_safe::WriteBuf;
@@ -172,116 +171,62 @@ impl Conn {
     }
 
     async fn proc_client_msg(&mut self, bs: &[u8]) -> bool {
-        let msg: serde_json::Result<ClientMsg>;
-        let mut unzdata: Option<Vec<u8>> = None;
-        match self.encoder {
-            Some(ref encoder) if encoder.name() != NULLENCODER_NAME => {
-                let data = encoder.decode(&bs);
-                if data.is_err() {
-                    error!(
-                        "recv bad msg from conn: {}, err: {}, msg: {:?}",
-                        self.id,
-                        data.err().unwrap(),
-                        bs,
-                    );
-                    return false;
-                }
-                unzdata = Some(data.unwrap());
-            }
-            _ => {}
-        }
-
-        if unzdata.is_some() {
-            msg = serde_json::from_slice(unzdata.as_ref().unwrap());
-        } else {
-            msg = serde_json::from_slice(bs);
-        }
-
-        if msg.is_err() {
-            error!(
-                "recv bad msg from conn: {}, err: {}",
-                self.id,
-                msg.err().unwrap()
-            );
+        let cmsg = cmsg::deserialize_cmsg(bs);
+        if let Err(e) = cmsg {
+            error!("recv bad msg from conn: {}, err: {}", self.id, e);
             return false;
         }
 
-        let msg = msg.unwrap();
-        let ok = msg.validate();
-        if ok.is_err() {
+        let cmsg = cmsg.unwrap();
+        if let Err(e) = cmsg.validate() {
             warn!(
                 "msg validate failed: {}, msg-id: {}, err: {}",
-                self.id,
-                msg.id,
-                ok.err().unwrap()
+                self.id, cmsg.id, e
             );
             return false;
         }
 
-        metric::inc_recv_msg(msg.typ.str(), 1);
+        let cmsg_type = cmsg::ClientMsgType::from_must(cmsg.r#type);
+        metric::inc_recv_msg(cmsg_type.str(), 1);
 
-        if msg.typ.is_type(CMSG_TYPE_ACK) {
+        if cmsg_type.is_type(cmsg::ClientMsgType::Ack) {
             return true;
         }
 
-        if msg.ack == 1 {
-            let rmsg = ClientMsg::new_ack_msg(&msg.id);
+        if cmsg.ack == 1 {
+            let rmsg = cmsg::ClientMsg::new_ack_msg(&cmsg.id);
             let r = self.send_cmsg(&rmsg).await;
             if r.is_err() {
                 return false;
             }
         }
 
-        match msg.typ.0 {
-            CMSG_TYPE_ECHO => {
-                self.send_cmsg(&msg)
+        match cmsg_type {
+            cmsg::ClientMsgType::Echo => {
+                self.send_cmsg(&cmsg)
                     .await
                     .unwrap_or_else(|e| error!("failed to send cmsg: {}", e));
             }
-            CMSG_TYPE_INIT => self.proc_init_cmsg(&msg).await,
-            CMSG_TYPE_BIZ => self.proc_biz_msg(msg).await,
+            cmsg::ClientMsgType::Init => self.proc_init_cmsg(cmsg).await,
+            cmsg::ClientMsgType::Biz => self.proc_biz_msg(cmsg).await,
             _ => {}
         }
 
         true
     }
 
-    async fn proc_init_cmsg(&mut self, msg: &ClientMsg) {
-        if self.encoder.is_some() {
-            warn!("recv init msg from inited conn: {}", self.id);
-            return;
-        }
-
-        let r: serde_json::Result<ConnInitMsgData> =
-            serde_json::from_str(msg.data.as_ref().unwrap().get());
-        if r.is_err() {
-            warn!("recv init msg from inited conn: {}", self.id);
-            return self.quit().await;
-        }
-
-        let data = r.unwrap();
-        let data = self.gen_init_resp_data(data);
-        if data.is_err() {
-            warn!(
-                "failed to gen conn init resp data: {}, err: {}",
-                self.id,
-                data.err().unwrap()
-            );
-            return self.quit().await;
-        }
-
-        let data = data.unwrap();
-
-        self.encoder = Some(Encoder::new(&data.accept_encoding));
-
-        let data = serde_json::to_string(&data).unwrap();
-        let data = RawValue::from_string(data).unwrap();
-        let rmsg = ClientMsg {
+    async fn proc_init_cmsg(&mut self, mut msg: cmsg::ClientMsg) {
+        let init_data = msg.init_data.take().unwrap();
+        let init_data = self.gen_init_resp_data(init_data);
+        self.encoder = Some(cmsg::Compressor::new_compressor(
+            init_data.accept_compressor,
+        ));
+        let rmsg = cmsg::ClientMsg {
             id: lib::gen_msg_id(),
-            typ: ClientMsgType(CMSG_TYPE_INIT_RESP),
+            r#type: cmsg::ClientMsgType::InitResp as i32,
             ack: 1,
-            service_id: None,
-            data: Some(data),
+            init_data: Some(init_data),
+            ..Default::default()
         };
         match self.send_cmsg(&rmsg).await {
             Err(e) => {
@@ -296,19 +241,28 @@ impl Conn {
         }
     }
 
-    async fn proc_biz_msg(&mut self, mut msg: ClientMsg) {
+    async fn proc_biz_msg(&mut self, mut msg: cmsg::ClientMsg) {
         let service_id = msg.service_id.take().unwrap();
 
         debug!("proc biz msg: {}", msg.id);
-        let channel_msg = lib::BatiMsg::new(
+
+        let biz_data = msg.take_biz_data();
+        if let Err(e) = biz_data {
+            error!("recv bad biz data: {} - {}", self.id, e);
+            return;
+        }
+
+        let biz_data = biz_data.unwrap();
+
+        let bati_msg = lib::BatiMsg::new(
             Some(msg.id.clone()),
             lib::BATI_MSG_TYPE_BIZ,
             self.id.clone(),
             self.uid.clone(),
             Some(self.ip.clone()),
-            msg.data.take(),
+            Some(biz_data),
         );
-        match serde_json::to_vec(&channel_msg) {
+        match serde_json::to_vec(&bati_msg) {
             Ok(bs) => {
                 self.pilot
                     .send_conn_msg(PilotServiceBizMsg {
@@ -326,23 +280,29 @@ impl Conn {
         }
     }
 
-    async fn send_cmsg(&self, msg: &ClientMsg) -> Result<(), Box<dyn std::error::Error>> {
+    async fn send_cmsg(&self, msg: &cmsg::ClientMsg) -> Result<(), Box<dyn std::error::Error>> {
         debug!(
-            "send msg to conn: {}, msg, id: {}, type: {}, data: {:?}",
-            self.id, msg.id, msg.typ, msg.data
+            "send msg to conn: {}, msg, id: {}, type: {}",
+            self.id, msg.id, msg.r#type
         );
 
-        let encoder = match msg.typ.0 {
-            CMSG_TYPE_INIT_RESP => None,
-            _ => self.encoder.clone(),
-        };
-        match msg.gen_bytes_with_encoder(encoder) {
-            Err(e) => Err(e),
-            Ok(v) => {
-                self.send_client_msg(WsMessage::Binary(v)).await;
-                Ok(())
-            }
-        }
+        let bs = cmsg::serialize_cmsg(msg);
+        let bs = Bytes::from(bs);
+        self.send_client_msg(WsMessage::Binary(bs)).await;
+        Ok(())
+
+        // let encoder = match msg.typ.0 {
+        //     CMSG_TYPE_INIT_RESP => None,
+        //     _ => self.encoder.clone(),
+        // };
+        //
+        // match msg.gen_bytes_with_encoder(encoder) {
+        //     Err(e) => Err(e),
+        //     Ok(v) => {
+        //         self.send_client_msg(WsMessage::Binary(v)).await;
+        //         Ok(())
+        //     }
+        // }
     }
 
     async fn quit(&mut self) {
@@ -369,29 +329,29 @@ impl Conn {
         }
     }
 
-    fn gen_init_resp_data(&self, data: ConnInitMsgData) -> Result<ConnInitMsgData, String> {
-        let mut resp_msg = ConnInitMsgData {
+    fn gen_init_resp_data(&self, data: cmsg::InitData) -> cmsg::InitData {
+        cmsg::InitData {
             ping_interval: HEARTBEAT_INTERVAL_SEC,
-            ..Default::default()
-        };
-
-        if data.accept_encoding.ne("") {
-            let es: Vec<_> = data.accept_encoding.split(',').collect();
-            let mut gzip_enable = false;
-            let mut deflate_enable = false;
-            for s in es.into_iter() {
-                match s {
-                    ZSTD_NAME => gzip_enable = true,
-                    DEFLATE_NAME => deflate_enable = true,
-                    _ => {}
-                }
-            }
-            if deflate_enable {
-                resp_msg.accept_encoding = DEFLATE_NAME.to_string();
-            } else if gzip_enable {
-                resp_msg.accept_encoding = ZSTD_NAME.to_string();
-            }
+            accept_compressor: data.accept_compressor,
         }
+
+        // if data.accept_encoding.ne("") {
+        //     let es: Vec<_> = data.accept_encoding.split(',').collect();
+        //     let mut gzip_enable = false;
+        //     let mut deflate_enable = false;
+        //     for s in es.into_iter() {
+        //         match s {
+        //             ZSTD_NAME => gzip_enable = true,
+        //             DEFLATE_NAME => deflate_enable = true,
+        //             _ => {}
+        //         }
+        //     }
+        //     if deflate_enable {
+        //         resp_msg.accept_encoding = DEFLATE_NAME.to_string();
+        //     } else if gzip_enable {
+        //         resp_msg.accept_encoding = ZSTD_NAME.to_string();
+        //     }
+        // }
 
         // if data.conn_id.is_some() {
         //     resp_msg.conn_id = Some(data.conn_id.as_ref().unwrap().to_string());
@@ -399,7 +359,7 @@ impl Conn {
         //     resp_msg.conn_id = Some(data.connid.as_ref().unwrap().to_string());
         // }
 
-        Ok(resp_msg)
+        // Ok(resp_msg)
     }
 
     async fn join_hub(&mut self) {
