@@ -23,7 +23,6 @@ pub struct Hub {
     conn_services: HashMap<String, HashSet<String>>,
     uid_conns: HashMap<String, HashSet<String>>,
     dt_conns: HashMap<DeviceType, u64>,
-    rand: rand::rngs::ThreadRng,
     pilot: PilotSender,
     metric_collector: MetricSender,
     service_confs: HashMap<String, lib::ServiceConf>,
@@ -79,11 +78,9 @@ impl ServiceRoom {
 
 impl Hub {
     pub fn new(ix: usize, pilot: PilotSender, metric_collector: MetricSender) -> Self {
-        let rand = rand::thread_rng();
         let (sender, receiver) = new_hub_channel(1024);
         let mut hub = Hub {
             ix,
-            rand,
             pilot,
             metric_collector,
             conns: HashMap::with_capacity(10240),
