@@ -142,7 +142,7 @@ impl ClientMsgType {
 
 impl CompressorType {
     pub fn new_compressor(compressor: i32) -> Encoder {
-        let name = match CompressorType::from_i32(compressor).unwrap() {
+        let name = match CompressorType::from_i32(compressor).unwrap_or(Self::Null) {
             Self::Null => NULLENCODER_NAME,
             Self::Deflate => DEFLATE_NAME,
             // Self::Zstd => ZSTD_NAME,

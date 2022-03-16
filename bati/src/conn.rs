@@ -11,6 +11,7 @@ use ntex::ws::{Frame as WsFrame, Message as WsMessage, WsSink};
 use ntex::{rt, util::Bytes};
 use std::fmt;
 use std::time::{Duration, Instant};
+use futures::future::err;
 use zstd::zstd_safe::WriteBuf;
 
 const HEARTBEAT_INTERVAL_SEC: u32 = 60;
@@ -253,7 +254,18 @@ impl Conn {
             return;
         }
 
-        let biz_data = biz_data.unwrap();
+        let mut biz_data = biz_data.unwrap();
+        if let Some(encoder) = msg.compressor {
+            if encoder != cmsg::CompressorType::Null as i32 {
+                let encoder = cmsg::CompressorType::new_compressor(encoder);
+                let r = encoder.decode(biz_data.as_ref());
+                if r.is_err() {
+                    error!("failed to uncompress bizdata: {} - {}", msg.id, r.err().unwrap());
+                    return
+                }
+                biz_data = r.unwrap();
+            }
+        }
 
         let bati_msg = lib::BatiMsg::new(
             Some(msg.id.clone()),

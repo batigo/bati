@@ -13,6 +13,7 @@ use log::{debug, error, info, warn};
 use ntex::{rt, util::Bytes};
 use serde_json::error::Category::Data;
 use std::collections::HashMap;
+use futures::future::err;
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -334,6 +335,7 @@ impl Pilot {
 
         let mut biz_data = msg.biz_data.take().unwrap();
         let data = biz_data.data.take().unwrap();
+        let data = base64::decode(&data).unwrap();
 
         let ServiceMsg { id, service, .. } = msg;
 

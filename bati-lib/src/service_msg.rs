@@ -57,7 +57,7 @@ pub struct BizData {
     pub broadcast_ratio: Option<u8>,
     pub black_uids: Option<Vec<String>>,
     pub white_uids: Option<Vec<String>>,
-    pub data: Option<Vec<u8>>,
+    pub data: Option<String>,
 }
 
 impl fmt::Display for ServiceMsg {

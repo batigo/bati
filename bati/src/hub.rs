@@ -40,7 +40,7 @@ struct Conn {
 
 impl Conn {
     async fn send_conn_msg(&self, cid: &str, msg: Hub2ConnMsg) {
-        warn!("send msg to conn: {} - {:?}", cid, msg);
+        warn!("end msg to conn: {} - {:?}", cid, msg);
         if let Err(e) = self.addr.send_hub_msg(msg).await {
             warn!("failed to send conn biz msg: {} - {}", cid, e);
             self.addr.send_hub_msg(Hub2ConnMsg::QUIT).await;

@@ -142,9 +142,10 @@ async fn run_consumer(
                     let msg: serde_json::Result<ServiceMsg> = serde_json::from_slice(bs);
                     if msg.is_err() {
                         error!(
-                            "recv bad msg from service: {}, failed to parse msg: {}",
+                            "recv bad msg from service - {}, failed to parse msg: {},  === {}",
                             service,
-                            msg.err().unwrap().to_string()
+                            msg.err().unwrap().to_string(),
+                            String::from_utf8(bs.to_vec()).unwrap()
                         );
                         continue;
                     }
