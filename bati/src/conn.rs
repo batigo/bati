@@ -218,7 +218,7 @@ impl Conn {
     async fn proc_init_cmsg(&mut self, mut msg: cmsg::ClientMsg) {
         let init_data = msg.init_data.take().unwrap();
         let init_data = self.gen_init_resp_data(init_data);
-        self.encoder = Some(cmsg::Compressor::new_compressor(
+        self.encoder = Some(cmsg::CompressorType::new_compressor(
             init_data.accept_compressor,
         ));
         let rmsg = cmsg::ClientMsg {
@@ -234,6 +234,7 @@ impl Conn {
                 self.quit().await;
             }
             Ok(_) => {
+                info!("conn inited, cid: {}, encoder: {}", self.id, self.encoder.as_ref().unwrap());
                 if !self.join_hub {
                     self.join_hub().await;
                 }

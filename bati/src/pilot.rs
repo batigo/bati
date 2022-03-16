@@ -390,7 +390,7 @@ impl Pilot {
                     r#type: cmsg::ClientMsgType::Biz as i32,
                     ack: 0,
                     service_id: Some(service),
-                    compressor: Some(cmsg::Compressor::Deflate as i32),
+                    compressor: Some(cmsg::CompressorType::Deflate as i32),
                     biz_data: Some(bs),
                     init_data: None,
                 };

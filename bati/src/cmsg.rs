@@ -2,32 +2,32 @@ use crate::encoding::*;
 use prost::Message;
 use std::io::Cursor;
 
+//option go_package = "github.com/batigo/cmsg";
+
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ClientMsg {
-    #[prost(string, tag = "1")]
+    #[prost(string, tag="1")]
     pub id: ::prost::alloc::string::String,
-    #[prost(enumeration = "ClientMsgType", tag = "2")]
+    #[prost(enumeration="ClientMsgType", tag="2")]
     pub r#type: i32,
-    #[prost(int32, tag = "3")]
+    #[prost(int32, tag="3")]
     pub ack: i32,
-    #[prost(string, optional, tag = "4")]
+    #[prost(string, optional, tag="4")]
     pub service_id: ::core::option::Option<::prost::alloc::string::String>,
-    #[prost(enumeration = "Compressor", optional, tag = "5")]
+    #[prost(enumeration="CompressorType", optional, tag="5")]
     pub compressor: ::core::option::Option<i32>,
-    #[prost(bytes = "vec", optional, tag = "6")]
+    #[prost(bytes="vec", optional, tag="6")]
     pub biz_data: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
-    #[prost(message, optional, tag = "7")]
+    #[prost(message, optional, tag="7")]
     pub init_data: ::core::option::Option<InitData>,
 }
-
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct InitData {
-    #[prost(enumeration = "Compressor", tag = "1")]
+    #[prost(enumeration="CompressorType", tag="1")]
     pub accept_compressor: i32,
-    #[prost(uint32, tag = "2")]
+    #[prost(uint32, tag="2")]
     pub ping_interval: u32,
 }
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
 pub enum ClientMsgType {
@@ -38,10 +38,9 @@ pub enum ClientMsgType {
     Ack = 4,
     Echo = 100,
 }
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
-pub enum Compressor {
+pub enum CompressorType {
     Null = 0,
     Deflate = 1,
 }
@@ -60,7 +59,7 @@ pub fn deserialize_cmsg(buf: &[u8]) -> Result<ClientMsg, prost::DecodeError> {
 impl ClientMsg {
     pub fn validate(&self) -> Result<(), &'static str> {
         let msg_typ = ClientMsgType::from_i32(self.r#type);
-        if !msg_typ.is_none() {
+        if msg_typ.is_none() {
             return Err("unknown msg type");
         }
 
@@ -83,7 +82,7 @@ impl ClientMsg {
         }
 
         if let Some(compressor) = self.compressor {
-            if !Compressor::is_valid(compressor) {
+            if !CompressorType::is_valid(compressor) {
                 return Err("unknown compressor");
             }
         }
@@ -102,7 +101,7 @@ impl ClientMsg {
             return Ok(data);
         }
 
-        let compressor = Compressor::new_compressor(self.compressor.take().unwrap());
+        let compressor = CompressorType::new_compressor(self.compressor.take().unwrap());
         let data = compressor.decode(data.as_slice());
         if data.is_err() {
             return Err(data.err().unwrap().to_string());
@@ -141,9 +140,9 @@ impl ClientMsgType {
     }
 }
 
-impl Compressor {
+impl CompressorType {
     pub fn new_compressor(compressor: i32) -> Encoder {
-        let name = match Compressor::from_i32(compressor).unwrap() {
+        let name = match CompressorType::from_i32(compressor).unwrap() {
             Self::Null => NULLENCODER_NAME,
             Self::Deflate => DEFLATE_NAME,
             // Self::Zstd => ZSTD_NAME,
