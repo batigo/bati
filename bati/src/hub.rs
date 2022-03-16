@@ -9,10 +9,10 @@ use bati_lib as lib;
 use log::{debug, error, warn};
 use ntex::rt;
 use ntex::util::Bytes;
-use rand::{Rng, thread_rng};
+use rand::rngs::ThreadRng;
+use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use rand::rngs::ThreadRng;
 
 pub struct Hub {
     ix: usize,
@@ -54,11 +54,7 @@ impl std::fmt::Display for Conn {
     }
 }
 
-#[derive(PartialEq)]
-struct ServiceRoom {
-    service: String,
-    room: String,
-}
+struct ServiceRoom;
 
 impl ServiceRoom {
     fn validate_room_id(room_id: &str) -> bool {
@@ -635,14 +631,14 @@ impl Hub {
         let mut send_count: u64 = 0;
         let whites = msg.whites.take();
         let blacks = msg.blacks.take();
-        let ratio : u8;
+        let ratio: u8;
         if let Some(n) = msg.ratio.take() {
             ratio = n;
         } else {
             ratio = 100;
         }
 
-        let need_filter =  ratio < 100 || blacks.is_some();
+        let need_filter = ratio < 100 || blacks.is_some();
 
         let mut randd: Option<ThreadRng> = None;
         if need_filter {
@@ -651,16 +647,18 @@ impl Hub {
 
         let mut rand = rand::thread_rng();
         for (sid, conn) in conns.iter() {
-            if need_filter && !self.filter_conn(&conn.uid, &whites, &blacks, ratio, randd.as_mut().unwrap()) {
+            if need_filter
+                && !self.filter_conn(&conn.uid, &whites, &blacks, ratio, randd.as_mut().unwrap())
+            {
                 continue;
             }
             match msg.data.get_data_with_encoder(&conn.encoder) {
                 Err(e) => {
                     error!(
-                            "failed to encode msg, encoder: {}, err: {}",
-                            conn.encoder.name(),
-                            e
-                        );
+                        "failed to encode msg, encoder: {}, err: {}",
+                        conn.encoder.name(),
+                        e
+                    );
                 }
                 Ok(data) => {
                     conn.send_conn_msg(sid, Hub2ConnMsg::BIZ(data)).await;
@@ -668,8 +666,6 @@ impl Hub {
                 }
             }
         }
-
-
 
         metric::inc_send_msg(
             match msg.service.as_ref() {
