@@ -12,7 +12,7 @@ use ntex::{rt, util::Bytes};
 use std::fmt;
 use std::time::{Duration, Instant};
 use zstd::zstd_safe::WriteBuf;
-use bati_lib::serialize_bati_msg;
+use bati_lib::{BatiMsgType, serialize_bati_msg};
 
 const HEARTBEAT_INTERVAL_SEC: u32 = 60;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(180);
@@ -270,7 +270,7 @@ impl Conn {
 
         let bati_msg = lib::BatiMsg::new(
             Some(msg.id.clone()),
-            lib::BATI_MSG_TYPE_BIZ,
+            BatiMsgType::Biz,
             self.id.clone(),
             self.uid.clone(),
             Some(self.ip.clone()),

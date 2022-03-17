@@ -70,10 +70,10 @@ pub struct BizData {
     pub room: ::core::option::Option<::prost::alloc::string::String>,
     #[prost(uint32, optional, tag="5")]
     pub broadcast_ratio: ::core::option::Option<u32>,
-    #[prost(uint32, repeated, tag="6")]
-    pub black_uids: ::prost::alloc::vec::Vec<u32>,
-    #[prost(uint32, repeated, tag="7")]
-    pub white_uids: ::prost::alloc::vec::Vec<u32>,
+    #[prost(string, repeated, tag="6")]
+    pub black_uids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    #[prost(string, repeated, tag="7")]
+    pub white_uids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
     #[prost(bytes="vec", optional, tag="8")]
     pub data: ::core::option::Option<::prost::alloc::vec::Vec<u8>>,
 }
@@ -101,6 +101,7 @@ pub enum BizMsgType {
     Service = 3,
     All = 4,
 }
+
 
 
 impl std::fmt::Display for ServiceMsg {

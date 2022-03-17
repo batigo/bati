@@ -13,7 +13,7 @@ use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use bati_lib::serialize_message;
+use bati_lib::{BatiMsgType, BizMsgType, serialize_bati_msg};
 
 pub struct Hub {
     ix: usize,
@@ -447,7 +447,7 @@ impl Hub {
                 }
                 let bati_msg = lib::BatiMsg::new(
                     None,
-                    lib::BATI_MSG_TYPE_CONN_QUIT,
+                    BatiMsgType::ConnQuit,
                     msg.cid.clone(),
                     msg.uid.clone(),
                     msg.ip.clone(),
@@ -457,7 +457,7 @@ impl Hub {
                     "send client quit msg to service: {} - {}",
                     service, bati_msg
                 );
-                let bs = serialize_message(&bati_msg);
+                let bs = serialize_bati_msg(&bati_msg);
                 self.pilot
                     .send_hub_msg(Hub2PilotMsg::BizMsg(PilotServiceBizMsg {
                         service,
@@ -473,10 +473,10 @@ impl Hub {
 
     async fn handle_biz_msg(&mut self, msg: HubServiceBizMsg) {
         match msg.typ {
-            lib::BIZ_MSG_TYPE_USERS => self.handle_users_biz_msg(msg).await,
-            lib::BIZ_MSG_TYPE_ROOM => self.handle_room_biz_msg(msg).await,
-            lib::BIZ_MSG_TYPE_SERVICE => self.handle_service_biz_msg(msg).await,
-            lib::BIZ_MSG_TYPE_ALL => self.broadcast_bizmsg(msg).await,
+            lib::BizMsgType::Users => self.handle_users_biz_msg(msg).await,
+            lib::BizMsgType::Room  => self.handle_room_biz_msg(msg).await,
+            lib::BizMsgType::Service => self.handle_service_biz_msg(msg).await,
+            lib::BizMsgType::All => self.broadcast_bizmsg(msg).await,
             _ => {}
         }
         return;

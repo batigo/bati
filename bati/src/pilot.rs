@@ -324,7 +324,7 @@ impl Pilot {
         let QuitData{rooms, quit_service, ..} = quit_data;
 
         let mut nmsg = HubLeaveRoomMsg {
-            cid,
+            cid: cid.clone(),
             uid,
             service: msg.service,
             rooms: None,
@@ -334,7 +334,7 @@ impl Pilot {
             nmsg.rooms = Some(rooms);
         }
         self.send_hub_msgs(
-            cid.clone(),
+            cid,
             Pilot2HubMsg::LeaveRoom(nmsg),
         )
         .await;
@@ -372,10 +372,10 @@ impl Pilot {
             biz_msg.uids = Some(uids);
         }
         if black_uids.is_empty() {
-            biz_msg.black_uids = Some(black_uids);
+            biz_msg.blacks = Some(black_uids);
         }
         if white_uids.is_empty() {
-            biz_msg.white_uids = Some(white_uids);
+            biz_msg.whites = Some(white_uids);
         }
 
         if biz_msg.cids.is_some() && biz_msg.cids.as_ref().unwrap().len() == 1 {
