@@ -300,7 +300,7 @@ impl Hub {
         let conn = conn.unwrap();
 
         debug!(
-            "======= conn join room, uid: {}, sid: {}, room: {}",
+            "conn join room, uid: {}, sid: {}, room: {}",
             conn.uid, cid, room_id
         );
 
@@ -353,13 +353,14 @@ impl Hub {
             self.add_conn_service(cid, service);
         }
 
+        debug!("conn join service, cid: {}, service: {}", cid, service);
         true
     }
 
     fn quit_service(&mut self, cid: &str, service: &str) -> bool {
         let quited = match self.services.get_mut(service) {
             Some(conns) => {
-                debug!("conn quit service, sid: {}, : {}", cid, service);
+                debug!("conn quit service, cid: {}, : {}", cid, service);
                 conns.remove(cid);
                 if conns.len() == 0 {
                     self.services.remove(service);
@@ -680,7 +681,7 @@ impl Hub {
     }
 
     async fn handle_join_service_msg(&mut self, msg: HubJoinServiceMsg) {
-        warn!("recv join service msg: {:?}", msg);
+        debug!("recv join service msg: {:?}", msg);
         if let Some(cid) = msg.cid.as_ref() {
             self.handle_conn_join_service(cid, &msg);
         } else if let Some(uid) = msg.uid.as_ref() {
@@ -690,7 +691,7 @@ impl Hub {
 
     fn handle_conn_join_service(&mut self, cid: &str, msg: &HubJoinServiceMsg) {
         if !self.conns.contains_key(cid) {
-            warn!("++++ conn not found in service join msg: {:?}", msg);
+            warn!("conn not found in service join msg: {:?}", msg);
             return;
         }
         if msg.join_service {
