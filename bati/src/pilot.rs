@@ -11,9 +11,7 @@ use futures::channel::mpsc::{self, Sender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
 use ntex::{rt, util::Bytes};
-use serde_json::error::Category::Data;
 use std::collections::HashMap;
-use futures::future::err;
 
 #[derive(Clone)]
 struct ServicePostman {
@@ -188,12 +186,17 @@ impl Pilot {
                     metric::update_service_msg_latency(&msg.service, get_now_milli() - msg.ts);
                 }
 
-                match msg.typ {
-                    SERVICE_MSG_TYPE_CONN_JOIN => self.handle_join_service_msg(msg).await,
-                    SERVICE_MSG_TYPE_CONN_QUIT => self.handle_quit_service_msg(msg).await,
-                    SERVICE_MSG_TYPE_BIZ => self.handle_biz_msg(msg).await,
+                let typ = ServiceMsgType::from_i32(msg.r#type);
+                if typ.is_none() {
+                    warn!("bad service msg type: {}", msg.r#type);
+                }
+                let typ : ServiceMsgType = typ.unwrap();
+                match typ {
+                    ServiceMsgType::ConnJoin => self.handle_join_service_msg(msg).await,
+                    ServiceMsgType::ConnQuit=> self.handle_quit_service_msg(msg).await,
+                    ServiceMsgType::Biz => self.handle_biz_msg(msg).await,
                     _ => {
-                        warn!("bad service msg type: {}", msg.typ);
+                        warn!("bad service msg type: {}", typ as i32);
                     }
                 }
             }
@@ -257,22 +260,22 @@ impl Pilot {
     }
 
     async fn handle_join_service_msg(&self, mut msg: ServiceMsg) {
-        warn!("handle join service msg: {:?}", msg);
+        warn!("handle join service msg: {}", msg);
         if msg.join_data.is_none() {
-            warn!("==== join data empty: {:?}", msg);
+            warn!("==== join data empty: {}", msg);
             return;
         }
 
         let mut join_data = msg.join_data.take().unwrap();
         if join_data.cid.is_none() && join_data.uid.is_none() {
-            warn!("==== join data abnormal: {:?}", msg);
+            warn!("==== join data abnormal: {}", msg);
             return;
         }
 
-        let service = &msg.servcie;
+        let service = &msg.service;
         let cid = join_data.cid.take();
         let uid = join_data.uid.take();
-        let JoinData{rooms, join_service, ..} = join_data;
+        let JoinData{rooms, join_service,  ..} = join_data;
 
 
         let cp = self.postmen.get(service);
@@ -282,7 +285,7 @@ impl Pilot {
         }
 
         let cp = cp.unwrap();
-        if !cp.conf.enable_multi_rooms && rids.is_some() && rids.as_ref().unwrap().len() > 1 {
+        if !cp.conf.enable_multi_rooms && rooms.len() > 1 {
             warn!(
                 "service-{} disable multirooms, recv join multi-rooms msg: {}",
                 msg.service, msg.id
@@ -291,8 +294,8 @@ impl Pilot {
         }
 
         let mut nmsg = HubJoinServiceMsg {
-            cid,
             uid,
+            cid: cid.clone(),
             service: service.clone(),
             multi_rooms: cp.conf.enable_multi_rooms,
             rooms: None,
@@ -302,14 +305,14 @@ impl Pilot {
             nmsg.rooms = Some(rooms);
         }
         self.send_hub_msgs(
-            cid.clone(),
+            cid,
             Pilot2HubMsg::JoinService(nmsg)
         )
         .await;
     }
 
     async fn handle_quit_service_msg(&mut self, mut msg: ServiceMsg) {
-        debug!("handle leave room msg: {:?}", msg);
+        debug!("handle leave room msg: {}", msg);
         if msg.quit_data.is_none() {
             return;
         }
@@ -338,7 +341,7 @@ impl Pilot {
     }
 
     async fn handle_biz_msg(&mut self, mut msg: ServiceMsg) {
-        debug!("handle channel biz msg: {:?}", msg);
+        debug!("handle channel biz msg: {}", msg);
         if msg.biz_data.is_none() || msg.biz_data.as_ref().unwrap().data.is_none() {
             warn!("no biz data for msg: {}", msg.id);
             return;
@@ -349,20 +352,31 @@ impl Pilot {
         let data = base64::decode(&data).unwrap();
 
         let ServiceMsg { id, service, .. } = msg;
+        let BizData{cids, uids, black_uids, white_uids, broadcast_ratio, ..} = biz_data;
 
         let service_biz_data = self.gen_service_biz_data(id.clone(), service.clone(), data);
-        let biz_msg = HubServiceBizMsg {
+        let typ = BizMsgType::from_i32(biz_data.r#type).unwrap();
+        let mut biz_msg = HubServiceBizMsg {
             id,
-            typ: biz_data.typ,
-            cids: biz_data.cids.take(),
-            uids: biz_data.uids.take(),
+            typ,
+            ratio: broadcast_ratio,
             service: Some(service),
             room: biz_data.room.take(),
-            blacks: biz_data.black_uids.take(),
-            whites: biz_data.white_uids.take(),
-            ratio: biz_data.broadcast_ratio.take(),
             data: service_biz_data,
+            ..Default::default()
         };
+        if cids.is_empty() {
+            biz_msg.cids = Some(cids);
+        }
+        if uids.is_empty() {
+            biz_msg.uids = Some(uids);
+        }
+        if black_uids.is_empty() {
+            biz_msg.black_uids = Some(black_uids);
+        }
+        if white_uids.is_empty() {
+            biz_msg.white_uids = Some(white_uids);
+        }
 
         if biz_msg.cids.is_some() && biz_msg.cids.as_ref().unwrap().len() == 1 {
             self.send_hub_msgs(

@@ -66,7 +66,7 @@ pub struct HubServiceBizMsg {
     pub uids: Option<Vec<String>>,
     pub service: Option<String>,
     pub room: Option<String>,
-    pub ratio: Option<u8>,
+    pub ratio: Option<u32>,
     pub whites: Option<Vec<String>>,
     pub blacks: Option<Vec<String>>,
     pub data: ServiceBizData,

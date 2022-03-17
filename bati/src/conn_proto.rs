@@ -3,8 +3,6 @@ use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use ntex::util::Bytes;
 use ntex::web::ws::Frame;
-use serde::{Deserialize, Serialize};
-use serde_json::value::RawValue;
 use std::fmt;
 
 pub enum ConnMsg {

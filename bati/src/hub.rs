@@ -13,6 +13,7 @@ use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use bati_lib::serialize_message;
 
 pub struct Hub {
     ix: usize,
@@ -453,13 +454,14 @@ impl Hub {
                     None,
                 );
                 debug!(
-                    "send client quit msg to service: {} - {:?}",
+                    "send client quit msg to service: {} - {}",
                     service, bati_msg
                 );
+                let bs = serialize_message(&bati_msg);
                 self.pilot
                     .send_hub_msg(Hub2PilotMsg::BizMsg(PilotServiceBizMsg {
                         service,
-                        data: Bytes::from(serde_json::to_vec(&bati_msg).unwrap()),
+                        data: Bytes::from(bs),
                     }))
                     .await
                     .unwrap_or_else(|e| {
@@ -632,7 +634,7 @@ impl Hub {
         let mut send_count: u64 = 0;
         let whites = msg.whites.take();
         let blacks = msg.blacks.take();
-        let ratio: u8;
+        let ratio: u32;
         if let Some(n) = msg.ratio.take() {
             ratio = n;
         } else {
@@ -755,7 +757,7 @@ impl Hub {
         uid: &String,
         whites: &Option<Vec<String>>,
         blacks: &Option<Vec<String>>,
-        ratio: u8,
+        ratio: u32,
         rand: &mut rand::rngs::ThreadRng,
     ) -> bool {
         if let Some(v) = whites {

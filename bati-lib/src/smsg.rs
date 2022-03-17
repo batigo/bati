@@ -19,12 +19,12 @@ pub struct BatiMsg {
     #[prost(uint64, tag="7")]
     pub ts: u64,
 }
-#[derive(Clone, PartialEq, ::prost::Message, Debug)]
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ServiceMsg {
     #[prost(string, tag="1")]
     pub id: ::prost::alloc::string::String,
     #[prost(string, tag="2")]
-    pub servcie: ::prost::alloc::string::String,
+    pub service: ::prost::alloc::string::String,
     #[prost(enumeration="ServiceMsgType", tag="3")]
     pub r#type: i32,
     #[prost(message, optional, tag="4")]
@@ -33,6 +33,8 @@ pub struct ServiceMsg {
     pub join_data: ::core::option::Option<JoinData>,
     #[prost(message, optional, tag="6")]
     pub quit_data: ::core::option::Option<QuitData>,
+    #[prost(uint64, tag="7")]
+    pub ts: u64,
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct JoinData {
@@ -110,8 +112,8 @@ impl std::fmt::Display for ServiceMsg {
 impl ServiceMsg {
     pub fn valiate(&self) -> Result<(), &'static str> {
         let typ = ServiceMsgType::from_i32(self.r#type);
-        if typ.is_none {
-            error!("recv unknown service msg type: {} - {}", self.servcie, self.r#type);
+        if typ.is_none() {
+            error!("recv unknown service msg type: {} - {}", self.service, self.r#type);
             return Err("unknown service msg type")
         }
         let typ : ServiceMsgType = typ.unwrap();
@@ -141,16 +143,16 @@ impl ServiceMsg {
                 }
                 let data = self.biz_data.as_ref().unwrap();
 
-                let typ = BizData::from_i32(data.r#type);
-                if typ.is_none {
-                    error!("recv unknown  biz-msg type: {} - {}", self.servcie, self.r#type);
+                let typ = BizMsgType::from_i32(data.r#type);
+                if typ.is_none() {
+                    error!("recv unknown  biz-msg type: {} - {}", self.service, self.r#type);
                     return Err("unknown biz msg type")
                 }
                 let typ : BizMsgType = typ.unwrap();
 
                 match typ {
                      BizMsgType::Users=> {
-                        if data.cids.is_none() || data.uids.is_none() {
+                        if data.cids.is_empty() && data.uids.is_empty() {
                             return Err("both cids && uids missing in users biz msg");
                         }
                     }
@@ -208,4 +210,26 @@ impl BatiMsg {
             r#type: typ as i32,
         }
     }
+}
+
+pub fn serialize_service_msg(msg: &ServiceMsg) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.reserve(msg.encoded_len());
+    msg.encode(&mut buf);
+    buf
+}
+
+pub fn deserialize_service_message(buf: &[u8]) -> Result<ServiceMsg, prost::DecodeError> {
+    ServiceMsg::decode(&mut std::io::Cursor::new(buf))
+}
+
+pub fn serialize_bati_msg(msg: &BatiMsg) -> Vec<u8> {
+    let mut buf = Vec::new();
+    buf.reserve(msg.encoded_len());
+    msg.encode(&mut buf);
+    buf
+}
+
+pub fn deserialize_bati_message(buf: &[u8]) -> Result<BatiMsg, prost::DecodeError> {
+    BatiMsg::decode(&mut std::io::Cursor::new(buf))
 }

@@ -11,8 +11,8 @@ use ntex::ws::{Frame as WsFrame, Message as WsMessage, WsSink};
 use ntex::{rt, util::Bytes};
 use std::fmt;
 use std::time::{Duration, Instant};
-use futures::future::err;
 use zstd::zstd_safe::WriteBuf;
+use bati_lib::serialize_bati_msg;
 
 const HEARTBEAT_INTERVAL_SEC: u32 = 60;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(180);
@@ -276,22 +276,17 @@ impl Conn {
             Some(self.ip.clone()),
             Some(biz_data),
         );
-        match serde_json::to_vec(&bati_msg) {
-            Ok(bs) => {
-                self.pilot
-                    .send_conn_msg(PilotServiceBizMsg {
-                        service: service_id,
-                        data: Bytes::from(bs),
-                    })
-                    .await
-                    .unwrap_or_else(|e| {
-                        error!("failed to send pilot msg: {}", e);
-                    });
-            }
-            Err(e) => {
-                error!("failed to gen channel msg: {}, err: {}", msg.id, e);
-            }
-        }
+
+        let bs = serialize_bati_msg(&bati_msg);
+        self.pilot
+            .send_conn_msg(PilotServiceBizMsg {
+                service: service_id,
+                data: Bytes::from(bs),
+            })
+            .await
+            .unwrap_or_else(|e| {
+                error!("failed to send pilot msg: {}", e);
+            });
     }
 
     async fn send_cmsg(&self, msg: &cmsg::ClientMsg) -> Result<(), Box<dyn std::error::Error>> {

@@ -1,4 +1,4 @@
-use crate::{PostmanMsg, ServiceMsg};
+use crate::{deserialize_service_message, PostmanMsg, ServiceMsg};
 use futures::channel::mpsc::{Receiver, Sender};
 use futures::{SinkExt, StreamExt};
 use log::{debug, error, info, warn};
@@ -139,7 +139,8 @@ async fn run_consumer(
         match consumer.recv().await {
             Ok(msg) => match msg.payload() {
                 Some(bs) => {
-                    let msg: serde_json::Result<ServiceMsg> = serde_json::from_slice(bs);
+                    let msg  = deserialize_service_message(bs);
+                    // let msg: serde_json::Result<ServiceMsg> = serde_json::from_slice(bs);
                     if msg.is_err() {
                         error!(
                             "recv bad msg from service - {}, failed to parse msg: {},  === {}",
