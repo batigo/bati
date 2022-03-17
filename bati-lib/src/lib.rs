@@ -1,11 +1,13 @@
 mod kafka;
 mod postman;
 mod service;
-pub mod service_msg;
+// pub mod service_msg;
 mod service_registry;
+pub mod smsg;
+
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use self::{postman::*, service::*, service_msg::*, service_registry::*};
+pub use self::{postman::*, service::*, smsg::*, service_registry::*};
 use std::convert::TryInto;
 
 pub fn gen_msg_id() -> String {

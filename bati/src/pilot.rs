@@ -5,7 +5,7 @@ use crate::metric;
 use crate::pilot_proto::*;
 use crate::utils::*;
 use bati_lib as lib;
-use bati_lib::service_msg::*;
+use bati_lib::smsg::*;
 use bati_lib::{get_now_milli, Postman, PostmanMsg, ServiceConf};
 use futures::channel::mpsc::{self, Sender};
 use futures::{SinkExt, StreamExt};
@@ -269,10 +269,11 @@ impl Pilot {
             return;
         }
 
-        let service = &msg.service;
+        let service = &msg.servcie;
         let cid = join_data.cid.take();
         let uid = join_data.uid.take();
-        let rids = join_data.rids.take();
+        let JoinData{rooms, join_service, ..} = join_data;
+
 
         let cp = self.postmen.get(service);
         if cp.is_none() {
@@ -289,16 +290,20 @@ impl Pilot {
             return;
         }
 
+        let mut nmsg = HubJoinServiceMsg {
+            cid,
+            uid,
+            service: service.clone(),
+            multi_rooms: cp.conf.enable_multi_rooms,
+            rooms: None,
+            join_service: join_service.unwrap_or(false),
+        };
+        if !rooms.is_empty() {
+            nmsg.rooms = Some(rooms);
+        }
         self.send_hub_msgs(
             cid.clone(),
-            Pilot2HubMsg::JoinService(HubJoinServiceMsg {
-                cid,
-                uid,
-                service: service.clone(),
-                multi_rooms: cp.conf.enable_multi_rooms,
-                rooms: rids,
-                join_service: join_data.join_service,
-            }),
+            Pilot2HubMsg::JoinService(nmsg)
         )
         .await;
     }
@@ -313,15 +318,21 @@ impl Pilot {
         let cid = quit_data.cid.take();
         let uid = quit_data.uid.take();
 
+        let QuitData{rooms, quit_service, ..} = quit_data;
+
+        let mut nmsg = HubLeaveRoomMsg {
+            cid,
+            uid,
+            service: msg.service,
+            rooms: None,
+            quit_service: quit_service.unwrap_or(false),
+        };
+        if !rooms.is_empty() {
+            nmsg.rooms = Some(rooms);
+        }
         self.send_hub_msgs(
             cid.clone(),
-            Pilot2HubMsg::LeaveRoom(HubLeaveRoomMsg {
-                cid,
-                uid,
-                service: msg.service,
-                rooms: quit_data.rids.take(),
-                quit_service: quit_data.quit_service,
-            }),
+            Pilot2HubMsg::LeaveRoom(nmsg),
         )
         .await;
     }
@@ -346,7 +357,7 @@ impl Pilot {
             cids: biz_data.cids.take(),
             uids: biz_data.uids.take(),
             service: Some(service),
-            room: biz_data.rid.take(),
+            room: biz_data.room.take(),
             blacks: biz_data.black_uids.take(),
             whites: biz_data.white_uids.take(),
             ratio: biz_data.broadcast_ratio.take(),

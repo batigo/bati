@@ -179,6 +179,7 @@ impl Conn {
         }
 
         let cmsg = cmsg.unwrap();
+        let id = &cmsg.id;
         if let Err(e) = cmsg.validate() {
             warn!(
                 "msg validate failed: {}, msg-id: {}, err: {}",
