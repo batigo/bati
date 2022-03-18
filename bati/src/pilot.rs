@@ -366,16 +366,16 @@ impl Pilot {
             data: service_biz_data,
             ..Default::default()
         };
-        if cids.is_empty() {
+        if !cids.is_empty() {
             biz_msg.cids = Some(cids);
         }
-        if uids.is_empty() {
+        if !uids.is_empty() {
             biz_msg.uids = Some(uids);
         }
-        if black_uids.is_empty() {
+        if !black_uids.is_empty() {
             biz_msg.blacks = Some(black_uids);
         }
-        if white_uids.is_empty() {
+        if !white_uids.is_empty() {
             biz_msg.whites = Some(white_uids);
         }
 
