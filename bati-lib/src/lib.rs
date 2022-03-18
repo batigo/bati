@@ -7,7 +7,11 @@ pub mod smsg;
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use self::{postman::*, service::*, smsg::*, service_registry::*};
+pub use self::smsg::bati_msg::BatiMsgType;
+pub use self::smsg::biz_data::BizMsgType;
+pub use self::smsg::service_msg::ServiceMsgType;
+pub use self::{postman::*, service::*, service_registry::*, smsg::*};
+
 use std::convert::TryInto;
 
 pub fn gen_msg_id() -> String {

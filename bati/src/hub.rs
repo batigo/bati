@@ -6,6 +6,7 @@ use crate::metric;
 use crate::metric_proto::*;
 use crate::pilot_proto::*;
 use bati_lib as lib;
+use bati_lib::{serialize_bati_msg, BatiMsgType};
 use log::{debug, error, warn};
 use ntex::rt;
 use ntex::util::Bytes;
@@ -13,7 +14,6 @@ use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use bati_lib::{BatiMsgType, BizMsgType, serialize_bati_msg};
 
 pub struct Hub {
     ix: usize,
@@ -474,7 +474,7 @@ impl Hub {
     async fn handle_biz_msg(&mut self, msg: HubServiceBizMsg) {
         match msg.typ {
             lib::BizMsgType::Users => self.handle_users_biz_msg(msg).await,
-            lib::BizMsgType::Room  => self.handle_room_biz_msg(msg).await,
+            lib::BizMsgType::Room => self.handle_room_biz_msg(msg).await,
             lib::BizMsgType::Service => self.handle_service_biz_msg(msg).await,
             lib::BizMsgType::All => self.broadcast_bizmsg(msg).await,
             _ => {}

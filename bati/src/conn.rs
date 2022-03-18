@@ -6,13 +6,13 @@ use crate::pilot_proto::*;
 use crate::utils::*;
 use crate::{cmsg, metric};
 use bati_lib as lib;
+use bati_lib::{serialize_bati_msg, BatiMsgType};
 use log::{debug, error, info, warn};
 use ntex::ws::{Frame as WsFrame, Message as WsMessage, WsSink};
 use ntex::{rt, util::Bytes};
 use std::fmt;
 use std::time::{Duration, Instant};
 use zstd::zstd_safe::WriteBuf;
-use bati_lib::{BatiMsgType, serialize_bati_msg};
 
 const HEARTBEAT_INTERVAL_SEC: u32 = 60;
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(180);
@@ -179,7 +179,6 @@ impl Conn {
         }
 
         let cmsg = cmsg.unwrap();
-        let id = &cmsg.id;
         if let Err(e) = cmsg.validate() {
             warn!(
                 "msg validate failed: {}, msg-id: {}, err: {}",
@@ -236,7 +235,11 @@ impl Conn {
                 self.quit().await;
             }
             Ok(_) => {
-                info!("conn inited, cid: {}, encoder: {}", self.id, self.encoder.as_ref().unwrap());
+                info!(
+                    "conn inited, cid: {}, encoder: {}",
+                    self.id,
+                    self.encoder.as_ref().unwrap()
+                );
                 if !self.join_hub {
                     self.join_hub().await;
                 }
@@ -261,8 +264,12 @@ impl Conn {
                 let encoder = cmsg::CompressorType::new_compressor(encoder);
                 let r = encoder.decode(biz_data.as_ref());
                 if r.is_err() {
-                    error!("failed to uncompress bizdata: {} - {}", msg.id, r.err().unwrap());
-                    return
+                    error!(
+                        "failed to uncompress bizdata: {} - {}",
+                        msg.id,
+                        r.err().unwrap()
+                    );
+                    return;
                 }
                 biz_data = r.unwrap();
             }
