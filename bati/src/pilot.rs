@@ -344,7 +344,6 @@ impl Pilot {
 
         let mut biz_data = msg.biz_data.take().unwrap();
         let data = biz_data.data.take().unwrap();
-        let data = base64::decode(&data).unwrap();
 
         let typ = biz_data.get_type();
         let ServiceMsg { id, service, .. } = msg;
