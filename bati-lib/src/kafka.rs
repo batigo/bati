@@ -104,11 +104,7 @@ async fn run_producer(topic: String, mut recevier: Receiver<PostmanMsg>, produce
     loop {
         match recevier.next().await {
             Some(PostmanMsg::Upper(msg)) => {
-                debug!(
-                    "recv pilot msg in kafka producer: {} - {}",
-                    topic,
-                    String::from_utf8(msg.data.as_ref().to_vec()).unwrap()
-                );
+                debug!("recv pilot msg in kafka producer: {}",topic);
                 let rec = FutureRecord::to(&topic)
                     .payload(msg.data.to_bytes())
                     .key("");
@@ -143,10 +139,9 @@ async fn run_consumer(
                     // let msg: serde_json::Result<ServiceMsg> = serde_json::from_slice(bs);
                     if msg.is_err() {
                         error!(
-                            "recv bad msg from service - {}, failed to parse msg: {},  === {}",
+                            "recv bad msg from service - {}, failed to parse msg: {}",
                             service,
                             msg.err().unwrap().to_string(),
-                            String::from_utf8(bs.to_vec()).unwrap()
                         );
                         continue;
                     }
