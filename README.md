@@ -1,14 +1,14 @@
 # bati 
 
 用Rust实现的一个Websocket网关  
-***NOTE:*** 项目处于开发状态，没有进入稳定版本，不建议现在在生产环境使用
+***NOTE***: 项目处于开发状态，没有进入稳定版本，不建议现在在生产环境使用
 
 ## 整体架构
 ![avatar](https://github.com/batigo/resource/blob/master/bati-arch.png)
 
 ## 名词解释
-1. Client，通过Websocket接入bati的客户端
-2. Service，后端业务实现，比如直播业务、IM业务、群聊室业务等
+1. ****Client****: 通过Websocket接入bati的客户端
+2. ****Service****: 后端业务实现，比如直播业务、IM业务、群聊室业务等
 
 ## Feature
 1. 开箱即用，多语言Service和Client SDK
