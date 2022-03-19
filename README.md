@@ -35,3 +35,5 @@ Service message proto协议见 [smsproto](https://github.com/batigo/smsgproto)
 
 其他SDK开发中
 
+## bati接入示例
+[example](https://github.com/batigo/examples)
