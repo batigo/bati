@@ -1,6 +1,6 @@
 # bati 
 
-用Rust实现的一个Websocket网关  
+基于 [Rust](https://www.rust-lang.org/) 和 [ntex](https://github.com/ntex-rs/ntex) 实现的一个Websocket网关  
 ***NOTE***: 项目处于开发状态，没有进入稳定版本，不建议现在在生产环境使用
 
 ## 整体架构
@@ -38,4 +38,4 @@ Service message proto协议见 [smsproto](https://github.com/batigo/smsgproto)
 - 其他SDK开发中
 
 ## bati接入示例
-[example](https://github.com/batigo/examples)
+[examples](https://github.com/batigo/examples)
