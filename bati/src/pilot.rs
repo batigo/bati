@@ -405,7 +405,7 @@ impl Pilot {
                 let cmsg = cmsg::ClientMsg {
                     id: id.clone(),
                     r#type: cmsg::ClientMsgType::Biz as i32,
-                    ack: 0,
+                    ack: false,
                     service_id: Some(service.clone()),
                     compressor: None,
                     biz_data: Some(data),
@@ -416,7 +416,7 @@ impl Pilot {
                 let cmsg = cmsg::ClientMsg {
                     id: id.clone(),
                     r#type: cmsg::ClientMsgType::Biz as i32,
-                    ack: 0,
+                    ack: false,
                     service_id: Some(service),
                     compressor: Some(cmsg::CompressorType::Deflate as i32),
                     biz_data: Some(bs),
@@ -430,7 +430,7 @@ impl Pilot {
         let cmsg = cmsg::ClientMsg {
             id: id.clone(),
             r#type: cmsg::ClientMsgType::Biz as i32,
-            ack: 0,
+            ack: false,
             service_id: Some(service.clone()),
             compressor: None,
             biz_data: Some(data),

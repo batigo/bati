@@ -194,7 +194,7 @@ impl Conn {
             return true;
         }
 
-        if cmsg.ack == 1 {
+        if cmsg.ack {
             let rmsg = cmsg::ClientMsg::new_ack_msg(&cmsg.id);
             let r = self.send_cmsg(&rmsg).await;
             if r.is_err() {
@@ -225,7 +225,7 @@ impl Conn {
         let rmsg = cmsg::ClientMsg {
             id: lib::gen_msg_id(),
             r#type: cmsg::ClientMsgType::InitResp as i32,
-            ack: 1,
+            ack: true,
             init_data: Some(init_data),
             ..Default::default()
         };
