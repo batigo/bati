@@ -74,14 +74,13 @@ pub fn deserialize_cmsg(buf: &[u8]) -> Result<ClientMsg, prost::DecodeError> {
 }
 
 impl ClientMsg {
-    pub fn validate(&self) -> Result<(), &'static str> {
-        let msg_typ = ClientMsgType::from_i32(self.r#type);
-        if msg_typ.is_none() {
-            return Err("unknown msg type");
-        }
+    pub fn get_type(&self) -> ClientMsgType {
+        let typ: Option<ClientMsgType> = ClientMsgType::from_i32(self.r#type);
+        typ.unwrap_or(ClientMsgType::Unused)
+    }
 
-        let msg_typ = msg_typ.unwrap();
-        match msg_typ {
+    pub fn validate(&self) -> Result<(), &'static str> {
+        match self.get_type() {
             ClientMsgType::Biz => {
                 if self.biz_data.is_none() {
                     return Err("biz data missing for biz msg");
@@ -95,7 +94,10 @@ impl ClientMsg {
                     return Err("init data missing for init msg");
                 }
             }
-            _ => {}
+            ClientMsgType::Ack | ClientMsgType::Echo => {}
+            _ => {
+                return Err("abnormal msg type");
+            }
         }
 
         if let Some(compressor) = self.compressor {

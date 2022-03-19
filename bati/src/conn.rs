@@ -178,7 +178,7 @@ impl Conn {
             return false;
         }
 
-        let cmsg = cmsg.unwrap();
+        let mut cmsg = cmsg.unwrap();
         if let Err(e) = cmsg.validate() {
             warn!(
                 "msg validate failed: {}, msg-id: {}, err: {}",
@@ -204,6 +204,20 @@ impl Conn {
 
         match cmsg_type {
             cmsg::ClientMsgType::Echo => {
+                if cmsg.compressor.is_some() && cmsg.biz_data.is_some() {
+                    let compressor = cmsg::CompressorType::new_compressor(cmsg.compressor.unwrap());
+                    let data = compressor.decode(cmsg.biz_data.take().unwrap().as_slice());
+                    if data.is_err() {
+                        error!(
+                            "failed to decode echo data, cid: {}, err: {}",
+                            self.id,
+                            data.err().unwrap()
+                        );
+                        return true;
+                    }
+                    let data = compressor.encode(data.unwrap().as_slice()).unwrap();
+                    cmsg.biz_data = Some(data);
+                }
                 self.send_cmsg(&cmsg)
                     .await
                     .unwrap_or_else(|e| error!("failed to send cmsg: {}", e));

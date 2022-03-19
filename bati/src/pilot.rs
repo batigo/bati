@@ -398,32 +398,37 @@ impl Pilot {
                 break;
             }
         }
-        need_comressor = need_comressor && data.len() > 200;
-
+        need_comressor = need_comressor && data.len() > 100;
         if need_comressor {
             if let Ok(bs) = Encoder::new(DEFLATE_NAME).encode(&data) {
-                let cmsg = cmsg::ClientMsg {
-                    id: id.clone(),
-                    r#type: cmsg::ClientMsgType::Biz as i32,
-                    ack: false,
-                    service_id: Some(service.clone()),
-                    compressor: None,
-                    biz_data: Some(data),
-                    init_data: None,
-                };
-                let rbs = cmsg::serialize_cmsg(&cmsg);
+                if data.len() - bs.len() > 20 {
+                    let cmsg = cmsg::ClientMsg {
+                        id: id.clone(),
+                        r#type: cmsg::ClientMsgType::Biz as i32,
+                        ack: false,
+                        service_id: Some(service.clone()),
+                        compressor: None,
+                        biz_data: Some(data),
+                        init_data: None,
+                    };
+                    let rbs = cmsg::serialize_cmsg(&cmsg);
 
-                let cmsg = cmsg::ClientMsg {
-                    id: id.clone(),
-                    r#type: cmsg::ClientMsgType::Biz as i32,
-                    ack: false,
-                    service_id: Some(service),
-                    compressor: Some(cmsg::CompressorType::Deflate as i32),
-                    biz_data: Some(bs),
-                    init_data: None,
-                };
-                let cbs = cmsg::serialize_cmsg(&cmsg);
-                return ServiceBizData::new(Bytes::from(rbs), Some(Bytes::from(cbs)));
+                    let cmsg = cmsg::ClientMsg {
+                        id: id.clone(),
+                        r#type: cmsg::ClientMsgType::Biz as i32,
+                        ack: false,
+                        service_id: Some(service),
+                        compressor: Some(cmsg::CompressorType::Deflate as i32),
+                        biz_data: Some(bs),
+                        init_data: None,
+                    };
+                    let cbs = cmsg::serialize_cmsg(&cmsg);
+                    let mut compressor_data: Option<Bytes> = None;
+                    if rbs.len() - cbs.len() > 10 {
+                        compressor_data = Some(Bytes::from(cbs));
+                    }
+                    return ServiceBizData::new(Bytes::from(rbs), compressor_data);
+                }
             }
         }
 
