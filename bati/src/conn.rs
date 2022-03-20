@@ -205,6 +205,7 @@ impl Conn {
         match cmsg_type {
             cmsg::ClientMsgType::Echo => {
                 if cmsg.compressor.is_some() && cmsg.biz_data.is_some() {
+                    warn!("====== begin do decode & encode echo bizdata: {}", cmsg.id);
                     let compressor = cmsg::CompressorType::new_compressor(cmsg.compressor.unwrap());
                     let data = compressor.decode(cmsg.biz_data.take().unwrap().as_slice());
                     if data.is_err() {

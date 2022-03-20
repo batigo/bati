@@ -17,7 +17,7 @@ lazy_static! {
     static ref SEND_MSG_COUNTER_VEC: IntCounterVec = register_int_counter_vec!(
         format!("{}_send_client_msgs", get_service_name()),
         "send client msgs",
-        &["channel"]
+        &["service"]
     )
     .unwrap();
     static ref RECV_MSG_COUNTER_VEC: IntCounterVec = register_int_counter_vec!(
@@ -33,15 +33,15 @@ lazy_static! {
     )
     .unwrap();
     static ref CHANNEL_SESSIONS_VEC: IntGaugeVec = register_int_gauge_vec!(
-        format!("{}_nconnected_channel_clients", get_service_name()),
-        "connected clients by channel",
-        &["channel"]
+        format!("{}_nconnected_service_clients", get_service_name()),
+        "connected clients by service",
+        &["service"]
     )
     .unwrap();
     static ref CHANNEL_MSG_LATENCY: HistogramVec = register_histogram_vec!(
-        format!("{}_channel_msg_latency", get_service_name()),
-        "channel msg latency",
-        &["channel"],
+        format!("{}_service_msg_latency", get_service_name()),
+        "service msg latency",
+        &["service"],
         exponential_buckets(1.0, 2.0, 8).unwrap()
     )
     .unwrap();
@@ -57,17 +57,17 @@ lazy_static! {
     .unwrap();
 }
 
-pub fn update_service_msg_latency(channel: &str, latency: u64) {
+pub fn update_service_msg_latency(service: &str, latency: u64) {
     let latency: i32 = latency.try_into().unwrap_or(0);
     let latency: f64 = latency.try_into().unwrap_or(0 as f64);
     CHANNEL_MSG_LATENCY
-        .with_label_values(&[channel])
+        .with_label_values(&[service])
         .observe(latency);
 }
 
-pub fn inc_send_msg(channel: &str, count: u64) {
+pub fn inc_send_msg(service: &str, count: u64) {
     SEND_MSG_COUNTER_VEC
-        .with_label_values(&[channel])
+        .with_label_values(&[service])
         .inc_by(count);
 }
 
@@ -76,8 +76,8 @@ pub fn inc_recv_msg(typ: &str, count: u64) {
 }
 
 pub struct MetricCollector {
-    dt_sessions: Vec<HashMap<DeviceType, u64>>,
-    channel_sessions: Vec<HashMap<String, u64>>,
+    dt_conns: Vec<HashMap<DeviceType, u64>>,
+    service_conns: Vec<HashMap<String, u64>>,
     cpu_total: u64,
     msg_sender: MetricSender,
     msg_receiver: MetricReceiver,
@@ -89,13 +89,13 @@ impl MetricCollector {
         let mut c = MetricCollector {
             msg_sender,
             msg_receiver,
-            dt_sessions: Vec::with_capacity(hub_size),
-            channel_sessions: Vec::with_capacity(hub_size),
+            dt_conns: Vec::with_capacity(hub_size),
+            service_conns: Vec::with_capacity(hub_size),
             cpu_total: 0,
         };
         for _ in 0..hub_size {
-            c.dt_sessions.push(HashMap::new());
-            c.channel_sessions.push(HashMap::new());
+            c.dt_conns.push(HashMap::new());
+            c.service_conns.push(HashMap::new());
         }
         c
     }
@@ -122,17 +122,17 @@ impl MetricCollector {
                         }
                     },
                     MetricMessage::FromHub(msg) => {
-                        if msg.ix >= collector.channel_sessions.len() {
+                        if msg.ix >= collector.service_conns.len() {
                             error!("get anbormal hub index: {:?}", msg);
                             continue;
                         }
                         let HubMetricMsg {
                             ix,
-                            dt_conns: dt_sessions,
-                            service_conns: channel_sessions,
+                            dt_conns,
+                            service_conns,
                         } = msg;
-                        collector.channel_sessions[ix] = channel_sessions;
-                        collector.dt_sessions[ix] = dt_sessions;
+                        collector.service_conns[ix] = service_conns;
+                        collector.dt_conns[ix] = dt_conns;
                     }
                 }
             }
@@ -143,33 +143,33 @@ impl MetricCollector {
     }
 
     fn metrics_stat_cron(&mut self) {
-        let mut dt_session_stat: HashMap<String, u64> = HashMap::new();
-        for sessions in &self.dt_sessions {
-            for (&dt, &n) in sessions {
-                let count = match dt_session_stat.get(dt) {
+        let mut dt_conn_stat: HashMap<String, u64> = HashMap::new();
+        for conns in &self.dt_conns {
+            for (&dt, &n) in conns {
+                let count = match dt_conn_stat.get(dt) {
                     Some(&m) => n + m,
                     None => n,
                 };
-                dt_session_stat.insert(dt.to_string(), count);
+                dt_conn_stat.insert(dt.to_string(), count);
             }
         }
-        dt_session_stat.iter().for_each(|(dt, n)| {
+        dt_conn_stat.iter().for_each(|(dt, n)| {
             DT_SESSIONS_VEC.with_label_values(&[dt]).set(*n as i64);
         });
 
-        let mut channel_session_stat: HashMap<String, u64> = HashMap::new();
-        for sessions in &self.channel_sessions {
-            for (dt, &n) in sessions {
-                let count = match channel_session_stat.get(dt) {
+        let mut service_conn_stat: HashMap<String, u64> = HashMap::new();
+        for conns in &self.service_conns {
+            for (dt, &n) in conns {
+                let count = match service_conn_stat.get(dt) {
                     Some(&m) => n + m,
                     None => n,
                 };
-                channel_session_stat.insert(dt.to_string(), count);
+                service_conn_stat.insert(dt.to_string(), count);
             }
         }
-        channel_session_stat.iter().for_each(|(channel, &n)| {
+        service_conn_stat.iter().for_each(|(service, &n)| {
             CHANNEL_SESSIONS_VEC
-                .with_label_values(&[channel])
+                .with_label_values(&[service])
                 .set(n as i64);
         });
 
